@@ -87,6 +87,12 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
 
     progress.update_status(agent_id, None, "Done")
 
+    if state.get("metadata", {}).get("ibbot_strategy_mode"):
+        state["data"].setdefault("portfolio_directives", {})[agent_id] = {
+            ticker: decision.model_dump()
+            for ticker, decision in result.decisions.items()
+        }
+
     return {
         "messages": state["messages"] + [message],
         "data": state["data"],

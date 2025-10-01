@@ -51,6 +51,9 @@ class GraphEdge(BaseModel):
 class HedgeFundResponse(BaseModel):
     decisions: dict
     analyst_signals: dict
+    strategy_bundle: Optional[Dict[str, Any]] = None
+    strategy_mode: bool = False
+    strategy_error: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):
@@ -71,6 +74,8 @@ class BaseHedgeFundRequest(BaseModel):
     api_keys: Optional[Dict[str, str]] = None
     data_provider: Optional[str] = Field(default=DEFAULT_PROVIDER_NAME)
     data_provider_options: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    strategy_mode: bool = False
+    workflow_settings: Optional[Dict[str, Any]] = None
 
     def get_agent_ids(self) -> List[str]:
         """Extract agent IDs from graph structure"""

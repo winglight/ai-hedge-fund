@@ -1,6 +1,8 @@
 import asyncio
 import json
 import re
+from datetime import datetime, timezone
+from typing import Any, Dict
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
@@ -11,6 +13,7 @@ from src.main import start
 from src.utils.analysts import ANALYST_CONFIG
 from src.graph.state import AgentState
 from src.data.providers import DEFAULT_PROVIDER_NAME, provider_context
+from src.integrations.ibbot.strategy import build_strategy_bundle
 
 DATA_PROVIDER_SETTING = "DATA_PROVIDER"
 
@@ -157,8 +160,16 @@ def run_graph(
     and model provider.
     """
     provider_name, credentials = build_provider_credentials(request)
+    strategy_mode = bool(getattr(request, "strategy_mode", False))
+    raw_workflow_settings = getattr(request, "workflow_settings", None)
+    workflow_settings: Dict[str, Any] = {}
+    if isinstance(raw_workflow_settings, dict):
+        workflow_settings = dict(raw_workflow_settings)
+        if "strategy_mode" in workflow_settings:
+            strategy_mode = bool(workflow_settings.get("strategy_mode"))
+
     with provider_context(provider_name, credentials):
-        return graph.invoke(
+        final_state = graph.invoke(
             {
                 "messages": [
                     HumanMessage(
@@ -178,9 +189,42 @@ def run_graph(
                     "model_provider": model_provider,
                     "request": request,  # Pass the request for agent-specific model access
                     "data_provider": provider_name,
+                    "ibbot_strategy_mode": strategy_mode,
+                    "workflow_settings": workflow_settings,
                 },
             },
         )
+
+    metadata = final_state.setdefault("metadata", {})
+    metadata.setdefault("ibbot_strategy_mode", strategy_mode)
+    metadata.setdefault("workflow_settings", workflow_settings)
+    metadata.setdefault("data_provider", provider_name)
+
+    final_message = final_state.get("messages", [])[-1] if final_state.get("messages") else None
+    decisions = parse_hedge_fund_response(final_message.content) if final_message else {}
+    metadata["parsed_decisions"] = decisions
+
+    if strategy_mode:
+        try:
+            bundle = build_strategy_bundle(
+                decisions=decisions or {},
+                analyst_signals=final_state.get("data", {}).get("analyst_signals", {}),
+                provider=provider_name,
+                portfolio_agent=(getattr(final_message, "name", None) or "portfolio_manager"),
+                generated_at=datetime.now(timezone.utc),
+                context={
+                    "model_name": metadata.get("model_name"),
+                    "model_provider": metadata.get("model_provider"),
+                    "workflow_settings": workflow_settings,
+                },
+            )
+            metadata["ibbot_strategy_bundle"] = bundle.model_dump(mode="json", by_alias=True)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            metadata["ibbot_conversion_error"] = str(exc)
+
+    final_state.setdefault("data", {}).setdefault("strategy_mode", strategy_mode)
+
+    return final_state
 
 
 def parse_hedge_fund_response(response):

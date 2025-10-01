@@ -213,6 +213,10 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     # Add the signal to the analyst_signals list
     state["data"]["analyst_signals"][agent_id] = risk_analysis
 
+    # Preserve risk directives explicitly when strategy mode is enabled
+    if state.get("metadata", {}).get("ibbot_strategy_mode"):
+        state["data"].setdefault("risk_directives", {})[agent_id] = risk_analysis
+
     return {
         "messages": state["messages"] + [message],
         "data": data,

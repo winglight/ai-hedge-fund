@@ -194,7 +194,13 @@ export const api = {
                     case 'complete':
                       // Store the complete event data in the node context
                       if (eventData.data) {
-                        nodeContext.setOutputNodeData(flowId, eventData.data as OutputNodeData);
+                        const payload: OutputNodeData = {
+                          ...(eventData.data as OutputNodeData),
+                          strategy_mode: eventData.strategy_mode ?? Boolean(eventData.strategy_bundle),
+                          strategy_bundle: eventData.strategy_bundle ?? null,
+                          strategy_error: eventData.strategy_error ?? null,
+                        };
+                        nodeContext.setOutputNodeData(flowId, payload);
                       }
                       // Mark all agents as complete when the whole process is done
                       nodeContext.updateAgentNodes(flowId, getAgentIds(), 'COMPLETE');

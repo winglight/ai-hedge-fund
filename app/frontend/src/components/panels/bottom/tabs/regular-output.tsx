@@ -1,10 +1,63 @@
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { useEffect, useState } from 'react';
+import type { OutputNodeData } from '@/contexts/node-context';
 import { getActionColor, getDisplayName, getSignalColor, getStatusIcon } from './output-tab-utils';
 import { ReasoningContent } from './reasoning-content';
+
+function StrategyStatus({ outputData }: { outputData: OutputNodeData | null }) {
+  const strategyEnabled = Boolean(outputData?.strategy_mode);
+  const bundle = outputData?.strategy_bundle;
+  const strategyError = outputData?.strategy_error;
+  const signalCount = bundle?.signals?.length ?? 0;
+  const riskCount = bundle?.riskDirectives?.length ?? 0;
+  const bundleMetadata = bundle?.metadata as Record<string, any> | undefined;
+  const workflowOverride = bundleMetadata?.workflow_settings?.strategy_mode;
+
+  return (
+    <Card className="bg-transparent mb-4">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-lg">Strategy Mode</CardTitle>
+        <Badge variant={strategyEnabled ? 'success' : 'secondary'}>
+          {strategyEnabled ? 'Enabled' : 'Disabled'}
+        </Badge>
+      </CardHeader>
+      <CardContent className="text-sm space-y-2 text-muted-foreground">
+        {strategyEnabled ? (
+          bundle ? (
+            <>
+              <p className="text-foreground">
+                Packaged <span className="font-semibold">{signalCount}</span> signals and
+                {' '}<span className="font-semibold">{riskCount}</span> risk directives for ibbot.
+              </p>
+              {workflowOverride === false && (
+                <p>
+                  Workflow override disabled conversion even though runtime mode was enabled.
+                </p>
+              )}
+              <p>
+                Portfolio agent <span className="font-semibold">{bundle.portfolioAgent}</span> · Provider {bundle.provider}
+              </p>
+            </>
+          ) : strategyError ? (
+            <p className="text-destructive">
+              Failed to assemble ibbot payload: {strategyError}
+            </p>
+          ) : (
+            <p>
+              Strategy bundle unavailable for this run. Portfolio decisions remain accessible via the legacy view.
+            </p>
+          )
+        ) : (
+          <p>Enable strategy mode to export compatible payloads for ibbot orchestration.</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 // Progress Section Component
 function ProgressSection({ sortedAgents }: { sortedAgents: [string, any][] }) {
@@ -46,8 +99,8 @@ function ProgressSection({ sortedAgents }: { sortedAgents: [string, any][] }) {
 }
 
 // Summary Section Component
-function SummarySection({ outputData }: { outputData: any }) {
-  if (!outputData) return null;
+function SummarySection({ outputData }: { outputData: OutputNodeData | null }) {
+  if (!outputData?.decisions) return null;
 
   return (
     <Card className="bg-transparent mb-4">
@@ -85,10 +138,10 @@ function SummarySection({ outputData }: { outputData: any }) {
 }
 
 // Analysis Results Section Component
-function AnalysisResultsSection({ outputData }: { outputData: any }) {
+function AnalysisResultsSection({ outputData }: { outputData: OutputNodeData | null }) {
   // Always call hooks at the top of the function
   const [selectedTicker, setSelectedTicker] = useState<string>('');
-  
+
   // Calculate tickers (safe to do even if outputData is null)
   const tickers = outputData?.decisions ? Object.keys(outputData.decisions) : [];
   
@@ -213,18 +266,19 @@ function AnalysisResultsSection({ outputData }: { outputData: any }) {
 }
 
 // Main component for regular output
-export function RegularOutput({ 
-  sortedAgents, 
-  outputData 
-}: { 
-  sortedAgents: [string, any][]; 
-  outputData: any; 
+export function RegularOutput({
+  sortedAgents,
+  outputData
+}: {
+  sortedAgents: [string, any][];
+  outputData: OutputNodeData | null;
 }) {
   return (
     <>
+      <StrategyStatus outputData={outputData} />
       <ProgressSection sortedAgents={sortedAgents} />
       <SummarySection outputData={outputData} />
       <AnalysisResultsSection outputData={outputData} />
     </>
   );
-} 
+}

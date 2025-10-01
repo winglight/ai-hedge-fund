@@ -46,3 +46,6 @@ class CompleteEvent(BaseEvent):
     data: Dict[str, Any]
     timestamp: Optional[str] = None
     data_provider: Optional[str] = None
+    strategy_bundle: Optional[Dict[str, Any]] = None
+    strategy_mode: Optional[bool] = None
+    strategy_error: Optional[str] = None

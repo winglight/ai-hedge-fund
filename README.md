@@ -139,6 +139,16 @@ Please see detailed instructions on how to install and run the web application [
 <img width="1721" alt="Screenshot 2025-06-28 at 6 41 03 PM" src="https://github.com/user-attachments/assets/b95ab696-c9f4-416c-9ad1-51feb1f5374b" />
 
 
+### 🧠 Ibbot Strategy Mode
+
+Portfolio and risk directives can now be exported in an ibbot-compatible payload alongside the legacy decision JSON. The feature is available across the CLI, workflow persistence, and the web UI:
+
+- **CLI flag** – add `--strategy-mode` when running `src/main.py` to have the portfolio manager emit an ibbot strategy bundle in addition to the standard decisions.
+- **Frontend toggle** – the Portfolio Analyzer start node exposes an “ibbot Strategy Mode” checkbox; enable it before running a flow to request bundled output.
+- **Persisted workflows** – the toggle state is saved with each flow, so future runs (and teammates who open the flow) inherit the same strategy-mode preference automatically.
+
+When strategy mode is active, the UI displays whether a bundle was created and surfaces any conversion errors so they can be monitored separately from agent execution.
+
 ## How to Contribute
 
 1. Fork the repository

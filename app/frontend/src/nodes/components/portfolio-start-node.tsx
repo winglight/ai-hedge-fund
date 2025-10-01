@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Command,
   CommandEmpty,
@@ -58,6 +59,7 @@ export function PortfolioStartNode({
   const [runMode, setRunMode] = useNodeState(id, 'runMode', 'single');
   const [startDate, setStartDate] = useNodeState(id, 'startDate', threeMonthsAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useNodeState(id, 'endDate', today.toISOString().split('T')[0]);
+  const [strategyMode, setStrategyMode] = useNodeState(id, 'strategyMode', false);
   const [open, setOpen] = useState(false);
   
   const { currentFlowId } = useFlowContext();
@@ -229,6 +231,8 @@ export function PortfolioStartNode({
         model_provider: undefined,
         // Pass portfolio positions to backend
         portfolio_positions: portfolioPositions,
+        strategy_mode: strategyMode,
+        workflow_settings: { strategy_mode: strategyMode },
       });
     } else {
       // Use the regular hedge fund API for single run
@@ -251,6 +255,8 @@ export function PortfolioStartNode({
         initial_cash: parseFloat(initialCash) || 100000,
         // Pass portfolio positions to backend
         portfolio_positions: portfolioPositions,
+        strategy_mode: strategyMode,
+        workflow_settings: { strategy_mode: strategyMode },
       });
     }
   };
@@ -418,6 +424,20 @@ export function PortfolioStartNode({
                       <Play className="h-3.5 w-3.5" />
                     )}
                   </Button>
+                </div>
+                <div className="flex items-start justify-between rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+                  <div className="flex-1 pr-3">
+                    <div className="text-subtitle text-primary">ibbot Strategy Mode</div>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, portfolio and risk agents emit ibbot-compatible payloads alongside legacy decisions.
+                    </p>
+                  </div>
+                  <Checkbox
+                    id={`strategy-mode-${id}`}
+                    checked={strategyMode}
+                    onCheckedChange={(checked) => setStrategyMode(Boolean(checked))}
+                    className="mt-1"
+                  />
                 </div>
               </div>
               {runMode === 'backtest' && (

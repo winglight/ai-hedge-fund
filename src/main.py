@@ -16,9 +16,10 @@ from src.cli.input import (
     parse_cli_inputs,
 )
 from src.data.providers import provider_context, DEFAULT_PROVIDER_NAME
+from src.integrations.ibbot.strategy import build_strategy_bundle
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
 import json
 
@@ -55,6 +56,7 @@ def run_hedge_fund(
     model_provider: str = "OpenAI",
     data_provider: str = DEFAULT_PROVIDER_NAME,
     provider_options: dict | None = None,
+    strategy_mode: bool = False,
 ):
     # Start progress tracking
     progress.start()
@@ -83,13 +85,45 @@ def run_hedge_fund(
                         "show_reasoning": show_reasoning,
                         "model_name": model_name,
                         "model_provider": model_provider,
+                        "ibbot_strategy_mode": strategy_mode,
                     },
                 },
             )
 
+        metadata = final_state.setdefault("metadata", {})
+        metadata.setdefault("ibbot_strategy_mode", strategy_mode)
+
+        final_message = final_state["messages"][-1] if final_state.get("messages") else None
+        decisions = parse_hedge_fund_response(final_message.content) if final_message else {}
+        metadata["parsed_decisions"] = decisions
+
+        strategy_bundle = None
+        strategy_error = None
+        if strategy_mode:
+            try:
+                bundle = build_strategy_bundle(
+                    decisions=decisions or {},
+                    analyst_signals=final_state.get("data", {}).get("analyst_signals", {}),
+                    provider=data_provider,
+                    portfolio_agent=(getattr(final_message, "name", None) or "portfolio_manager"),
+                    generated_at=datetime.now(timezone.utc),
+                    context={
+                        "model_name": model_name,
+                        "model_provider": model_provider,
+                    },
+                )
+                strategy_bundle = bundle.model_dump(mode="json", by_alias=True)
+                metadata["ibbot_strategy_bundle"] = strategy_bundle
+            except Exception as exc:  # pragma: no cover - defensive logging path
+                strategy_error = str(exc)
+                metadata["ibbot_conversion_error"] = strategy_error
+
         return {
-            "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
+            "decisions": decisions,
             "analyst_signals": final_state["data"]["analyst_signals"],
+            "strategy_bundle": strategy_bundle,
+            "strategy_error": strategy_error,
+            "strategy_mode": strategy_mode,
         }
     finally:
         # Stop progress tracking
@@ -181,5 +215,6 @@ if __name__ == "__main__":
         model_provider=inputs.model_provider,
         data_provider=inputs.data_provider,
         provider_options=inputs.provider_options,
+        strategy_mode=inputs.strategy_mode,
     )
     print_trading_output(result)

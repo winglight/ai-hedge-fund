@@ -50,6 +50,38 @@ export interface PortfolioPosition {
   trade_price: number;
 }
 
+export interface StrategySignal {
+  ticker: string;
+  action: string;
+  quantity: number;
+  confidence?: number | null;
+  rationale?: string | null;
+  sourceAgent: string;
+  provider: string;
+  generatedAt: string;
+  metadata?: Record<string, any>;
+}
+
+export interface RiskDirective {
+  ticker: string;
+  remainingPositionLimit: number;
+  currentPrice?: number | null;
+  provider: string;
+  sourceAgent: string;
+  generatedAt: string;
+  metadata?: Record<string, any>;
+}
+
+export interface StrategyBundle {
+  provider: string;
+  generatedAt: string;
+  portfolioAgent: string;
+  signals: StrategySignal[];
+  riskDirectives: RiskDirective[];
+  analystContext: Record<string, any>;
+  metadata: Record<string, any>;
+}
+
 // Base interface for shared fields between HedgeFundRequest and BacktestRequest
 export interface BaseHedgeFundRequest {
   tickers: string[];
@@ -63,6 +95,8 @@ export interface BaseHedgeFundRequest {
   api_keys?: Record<string, string>;
   data_provider?: string;
   data_provider_options?: Record<string, string>;
+  strategy_mode?: boolean;
+  workflow_settings?: Record<string, any>;
 }
 
 export interface HedgeFundRequest extends BaseHedgeFundRequest {

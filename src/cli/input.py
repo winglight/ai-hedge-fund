@@ -313,6 +313,7 @@ class CLIInputs:
     raw_args: Optional[argparse.Namespace] = None
     data_provider: str = DEFAULT_PROVIDER_NAME
     provider_options: dict[str, str] = field(default_factory=dict)
+    strategy_mode: bool = False
 
 
 def parse_cli_inputs(
@@ -362,6 +363,11 @@ def parse_cli_inputs(
         dest="provider_options",
         help="Provider-specific option in key=value format. Can be provided multiple times.",
     )
+    parser.add_argument(
+        "--strategy-mode",
+        action="store_true",
+        help="Package risk and portfolio outputs into an ibbot-compatible strategy payload",
+    )
 
     args = parser.parse_args()
 
@@ -403,6 +409,7 @@ def parse_cli_inputs(
         raw_args=args,
         data_provider=provider_value,
         provider_options=provider_options,
+        strategy_mode=getattr(args, "strategy_mode", False),
     )
 
 

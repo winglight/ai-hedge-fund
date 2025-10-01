@@ -1,4 +1,5 @@
 import { LanguageModel } from '@/data/models';
+import type { StrategyBundle } from '@/services/types';
 import { createContext, ReactNode, useCallback, useContext, useState } from 'react';
 
 export type NodeStatus = 'IDLE' | 'IN_PROGRESS' | 'COMPLETE' | 'ERROR';
@@ -27,6 +28,9 @@ export interface AgentNodeData {
 export interface OutputNodeData {
   decisions: Record<string, any>;
   analyst_signals: Record<string, any>;
+  strategy_mode?: boolean;
+  strategy_bundle?: StrategyBundle | null;
+  strategy_error?: string | null;
   // Backtest-specific fields
   performance_metrics?: {
     sharpe_ratio?: number;

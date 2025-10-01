@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Request, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -13,6 +15,8 @@ from app.backend.services.api_key_service import ApiKeyService
 from src.utils.progress import progress
 from src.utils.analysts import get_agents_list
 from src.data.providers import DEFAULT_PROVIDER_NAME
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/hedge-fund")
 
@@ -136,14 +140,29 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                     yield ErrorEvent(message="Failed to generate hedge fund decisions").to_sse()
                     return
 
+                metadata = result.get("metadata", {}) if result else {}
+                strategy_mode_enabled = bool(metadata.get("ibbot_strategy_mode"))
+                strategy_bundle = metadata.get("ibbot_strategy_bundle")
+                strategy_error = metadata.get("ibbot_conversion_error")
+
+                if strategy_mode_enabled and strategy_error:
+                    logger.warning("IBBOT_STRATEGY_CONVERSION_FAILED: %s", strategy_error)
+
+                parsed_decisions = metadata.get("parsed_decisions")
+                if parsed_decisions is None:
+                    parsed_decisions = parse_hedge_fund_response(result.get("messages", [])[-1].content)
+
                 # Send the final result
                 final_data = CompleteEvent(
                     data={
-                        "decisions": parse_hedge_fund_response(result.get("messages", [])[-1].content),
+                        "decisions": parsed_decisions,
                         "analyst_signals": result.get("data", {}).get("analyst_signals", {}),
                         "current_prices": result.get("data", {}).get("current_prices", {}),
                     },
                     data_provider=data_provider,
+                    strategy_bundle=strategy_bundle,
+                    strategy_mode=strategy_mode_enabled,
+                    strategy_error=strategy_error,
                 )
                 yield final_data.to_sse()
 
