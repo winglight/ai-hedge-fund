@@ -55,6 +55,8 @@ def run_hedge_fund(
     model_provider: str = "OpenAI",
     data_provider: str = DEFAULT_PROVIDER_NAME,
     provider_options: dict | None = None,
+    strategy_mode: str | None = None,
+    data_timeframe: str | None = None,
 ):
     # Start progress tracking
     progress.start()
@@ -65,6 +67,12 @@ def run_hedge_fund(
         agent = workflow.compile()
 
         with provider_context(data_provider, provider_options or {}):
+            data_granularity = (
+                "intraday"
+                if (strategy_mode and "intra" in strategy_mode.lower())
+                or (data_timeframe and any(ch in data_timeframe.lower() for ch in ["m", "min", "hour", "hr", "h"]))
+                else "end_of_day"
+            )
             final_state = agent.invoke(
                 {
                     "messages": [
@@ -78,11 +86,20 @@ def run_hedge_fund(
                         "start_date": start_date,
                         "end_date": end_date,
                         "analyst_signals": {},
+                        "workflow_metadata": {
+                            "strategy_mode": strategy_mode,
+                            "data_timeframe": data_timeframe,
+                            "data_provider": data_provider,
+                            "data_granularity": data_granularity,
+                        },
                     },
                     "metadata": {
                         "show_reasoning": show_reasoning,
                         "model_name": model_name,
                         "model_provider": model_provider,
+                        "strategy_mode": strategy_mode,
+                        "data_timeframe": data_timeframe,
+                        "data_granularity": data_granularity,
                     },
                 },
             )
@@ -181,5 +198,7 @@ if __name__ == "__main__":
         model_provider=inputs.model_provider,
         data_provider=inputs.data_provider,
         provider_options=inputs.provider_options,
+        strategy_mode=inputs.strategy_mode,
+        data_timeframe=inputs.data_timeframe,
     )
     print_trading_output(result)

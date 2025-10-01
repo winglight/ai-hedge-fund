@@ -30,6 +30,18 @@ class AssetDataProvider(ABC):
     def get_prices(self, ticker: str, start_date: str, end_date: str) -> list[Price]:
         raise NotImplementedError
 
+    def get_intraday_prices(
+        self,
+        ticker: str,
+        start: str,
+        end: str,
+        *,
+        interval: str = "minute",
+        interval_multiplier: int = 5,
+    ) -> list[Price]:
+        """Optional intraday data endpoint; default falls back to empty list."""
+        raise NotImplementedError
+
     @abstractmethod
     def get_company_news(
         self,

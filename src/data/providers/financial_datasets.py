@@ -85,6 +85,35 @@ class FinancialDatasetsProvider(MarketDataProvider):
             self._cache.set_prices(cache_key, [p.model_dump() for p in prices], source=self.name)
         return prices
 
+    def get_intraday_prices(
+        self,
+        ticker: str,
+        start: str,
+        end: str,
+        *,
+        interval: str = "minute",
+        interval_multiplier: int = 5,
+    ) -> list[Price]:
+        cache_key = f"intraday_{ticker}_{interval}_{interval_multiplier}_{start}_{end}"
+        if cached := self._cache.get_prices(cache_key, source=self.name):
+            return [Price(**row) for row in cached]
+
+        url = (
+            "https://api.financialdatasets.ai/prices/"
+            f"?ticker={ticker}&interval={interval}&interval_multiplier={interval_multiplier}&start_date={start}&end_date={end}"
+        )
+        response = self._make_request(url)
+        if response.status_code != 200:
+            raise Exception(
+                f"Error fetching intraday prices for {ticker}: {response.status_code} - {response.text}"
+            )
+
+        price_response = PriceResponse(**response.json())
+        prices = price_response.prices
+        if prices:
+            self._cache.set_prices(cache_key, [p.model_dump() for p in prices], source=self.name)
+        return prices
+
     def get_financial_metrics(
         self,
         ticker: str,

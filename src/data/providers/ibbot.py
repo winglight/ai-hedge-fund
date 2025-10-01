@@ -148,6 +148,37 @@ class IbbotDataProvider(MarketDataProvider):
             self._cache.set_prices(cache_key, [p.model_dump() for p in prices], source=self.name)
         return prices
 
+    def get_intraday_prices(
+        self,
+        ticker: str,
+        start: str,
+        end: str,
+        *,
+        interval: str = "minute",
+        interval_multiplier: int = 5,
+    ) -> list[Price]:
+        cache_key = f"intraday_{ticker}_{interval}_{interval_multiplier}_{start}_{end}"
+        if cached := self._cache.get_prices(cache_key, source=self.name):
+            return [Price(**row) for row in cached]
+
+        contract_id = self._ensure_contract(ticker)
+        normalized_interval = interval.lower()
+        if normalized_interval.startswith("min"):
+            suffix = "m"
+        elif normalized_interval.startswith("hour") or normalized_interval.startswith("hr"):
+            suffix = "h"
+        else:
+            suffix = normalized_interval[:1]
+        interval_code = f"{interval_multiplier}{suffix}"
+
+        params = {"start": start, "end": end, "interval": interval_code}
+        data = self._request("GET", f"/v1/market-data/{contract_id}/prices", params=params)
+        raw_prices: Iterable[dict[str, Any]] = data.get("prices") or data.get("data") or []
+        prices = [self._normalize_price(item, ticker) for item in raw_prices]
+        if prices:
+            self._cache.set_prices(cache_key, [p.model_dump() for p in prices], source=self.name)
+        return prices
+
     def _normalize_price(self, payload: dict[str, Any], ticker: str) -> Price:
         return Price(
             ticker=ticker,

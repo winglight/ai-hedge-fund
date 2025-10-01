@@ -63,6 +63,8 @@ export interface BaseHedgeFundRequest {
   api_keys?: Record<string, string>;
   data_provider?: string;
   data_provider_options?: Record<string, string>;
+  strategy_mode?: string;
+  data_timeframe?: string;
 }
 
 export interface HedgeFundRequest extends BaseHedgeFundRequest {

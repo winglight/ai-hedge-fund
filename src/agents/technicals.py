@@ -1,4 +1,5 @@
 import math
+import re
 
 from langchain_core.messages import HumanMessage
 
@@ -8,7 +9,7 @@ import json
 import pandas as pd
 import numpy as np
 
-from src.tools.api import get_prices, prices_to_df
+from src.tools.api import get_prices, get_intraday_prices, prices_to_df
 from src.utils.progress import progress
 
 
@@ -42,17 +43,91 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
     5. Statistical Arbitrage Signals
     """
     data = state["data"]
+    metadata = state.get("metadata", {})
+    workflow_metadata = data.get("workflow_metadata", {}) or {}
     start_date = data["start_date"]
     end_date = data["end_date"]
     tickers = data["tickers"]
     api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
-    # Initialize analysis for each ticker
-    technical_analysis = {}
 
-    for ticker in tickers:
-        progress.update_status(agent_id, ticker, "Analyzing price data")
+    strategy_mode = (
+        metadata.get("strategy_mode")
+        or workflow_metadata.get("strategy_mode")
+        or metadata.get("strategy", {}).get("mode")
+    )
+    data_timeframe = metadata.get("data_timeframe") or workflow_metadata.get("data_timeframe")
+    data_provider = metadata.get("data_provider") or workflow_metadata.get("data_provider")
+    data_granularity = (
+        "intraday"
+        if is_intraday_mode(strategy_mode, data_timeframe)
+        else "end_of_day"
+    )
 
-        # Get the historical price data
+    progress_context = {
+        "data_provider": data_provider,
+        "strategy_mode": strategy_mode,
+        "data_timeframe": data_timeframe,
+        "data_granularity": data_granularity,
+    }
+
+    technical_analysis: dict[str, dict] = {}
+    tickers_to_analyze = tickers[:1] if data_granularity == "intraday" and tickers else tickers
+
+    for ticker in tickers_to_analyze:
+        progress.update_status(agent_id, ticker, "Analyzing price data", context=progress_context)
+
+        if data_granularity == "intraday":
+            progress.update_status(agent_id, ticker, "Fetching intraday data", context=progress_context)
+            prices = get_intraday_prices(
+                ticker,
+                start_date,
+                end_date,
+                api_key=api_key,
+                provider=data_provider,
+            )
+            if not prices:
+                progress.update_status(
+                    agent_id,
+                    ticker,
+                    "Fallback to end-of-day data",
+                    context=progress_context,
+                )
+                prices = get_prices(
+                    ticker=ticker,
+                    start_date=start_date,
+                    end_date=end_date,
+                    api_key=api_key,
+                )
+
+            if not prices:
+                progress.update_status(agent_id, ticker, "Failed: No price data found", context=progress_context)
+                continue
+
+            prices_df = prices_to_df(prices)
+            if prices_df.empty or len(prices_df) < 5:
+                progress.update_status(agent_id, ticker, "Insufficient intraday data", context=progress_context)
+                continue
+
+            prices_df = prices_df.sort_values("time")
+            intraday_result = analyze_intraday_signals(prices_df, data_timeframe)
+            technical_analysis[ticker] = {
+                "signal": intraday_result["signal"],
+                "confidence": round(intraday_result["confidence"] * 100),
+                "execution_window": intraday_result["execution_window"],
+                "signal_ttl": intraday_result["signal_ttl"],
+                "risk_parameters": intraday_result["risk_parameters"],
+                "reasoning": normalize_pandas(intraday_result["reasoning"]),
+            }
+            progress.update_status(
+                agent_id,
+                ticker,
+                "Done",
+                analysis=json.dumps(technical_analysis[ticker], indent=4),
+                context=progress_context,
+            )
+            continue
+
+        # Daily swing/position pipeline
         prices = get_prices(
             ticker=ticker,
             start_date=start_date,
@@ -61,28 +136,26 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
         )
 
         if not prices:
-            progress.update_status(agent_id, ticker, "Failed: No price data found")
+            progress.update_status(agent_id, ticker, "Failed: No price data found", context=progress_context)
             continue
 
-        # Convert prices to a DataFrame
         prices_df = prices_to_df(prices)
 
-        progress.update_status(agent_id, ticker, "Calculating trend signals")
+        progress.update_status(agent_id, ticker, "Calculating trend signals", context=progress_context)
         trend_signals = calculate_trend_signals(prices_df)
 
-        progress.update_status(agent_id, ticker, "Calculating mean reversion")
+        progress.update_status(agent_id, ticker, "Calculating mean reversion", context=progress_context)
         mean_reversion_signals = calculate_mean_reversion_signals(prices_df)
 
-        progress.update_status(agent_id, ticker, "Calculating momentum")
+        progress.update_status(agent_id, ticker, "Calculating momentum", context=progress_context)
         momentum_signals = calculate_momentum_signals(prices_df)
 
-        progress.update_status(agent_id, ticker, "Analyzing volatility")
+        progress.update_status(agent_id, ticker, "Analyzing volatility", context=progress_context)
         volatility_signals = calculate_volatility_signals(prices_df)
 
-        progress.update_status(agent_id, ticker, "Statistical analysis")
+        progress.update_status(agent_id, ticker, "Statistical analysis", context=progress_context)
         stat_arb_signals = calculate_stat_arb_signals(prices_df)
 
-        # Combine all signals using a weighted ensemble approach
         strategy_weights = {
             "trend": 0.25,
             "mean_reversion": 0.20,
@@ -91,7 +164,7 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
             "stat_arb": 0.15,
         }
 
-        progress.update_status(agent_id, ticker, "Combining signals")
+        progress.update_status(agent_id, ticker, "Combining signals", context=progress_context)
         combined_signal = weighted_signal_combination(
             {
                 "trend": trend_signals,
@@ -103,10 +176,25 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
             strategy_weights,
         )
 
-        # Generate detailed analysis report for this ticker
+        atr_ratio = volatility_signals["metrics"].get("atr_ratio", 0.02)
+        ttl_days = max(2, min(10, len(prices_df) // 15 or 3))
+        execution_window = {
+            "start": f"{start_date}T09:30:00",
+            "end": f"{end_date}T16:00:00",
+        }
+        risk_parameters = {
+            "stop_loss_pct": float(np.clip(safe_float(atr_ratio) * 3, 0.02, 0.12)),
+            "take_profit_pct": float(np.clip(safe_float(atr_ratio) * 5, 0.04, 0.25)),
+            "max_position_pct": 0.22,
+            "volatility_target": float(volatility_signals["metrics"].get("historical_volatility", 0.25)),
+        }
+
         technical_analysis[ticker] = {
             "signal": combined_signal["signal"],
             "confidence": round(combined_signal["confidence"] * 100),
+            "execution_window": execution_window,
+            "signal_ttl": f"{ttl_days}d",
+            "risk_parameters": risk_parameters,
             "reasoning": {
                 "trend_following": {
                     "signal": trend_signals["signal"],
@@ -133,9 +221,20 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
                     "confidence": round(stat_arb_signals["confidence"] * 100),
                     "metrics": normalize_pandas(stat_arb_signals["metrics"]),
                 },
+                "ensemble": {
+                    "signal": combined_signal["signal"],
+                    "confidence": round(combined_signal["confidence"] * 100),
+                    "score": safe_float(combined_signal.get("composite_score", 0.0)),
+                },
             },
         }
-        progress.update_status(agent_id, ticker, "Done", analysis=json.dumps(technical_analysis, indent=4))
+        progress.update_status(
+            agent_id,
+            ticker,
+            "Done",
+            analysis=json.dumps(technical_analysis[ticker], indent=4),
+            context=progress_context,
+        )
 
     # Create the technical analyst message
     message = HumanMessage(
@@ -149,7 +248,7 @@ def technical_analyst_agent(state: AgentState, agent_id: str = "technical_analys
     # Add the signal to the analyst_signals list
     state["data"]["analyst_signals"][agent_id] = technical_analysis
 
-    progress.update_status(agent_id, None, "Done")
+    progress.update_status(agent_id, None, "Done", context=progress_context)
 
     return {
         "messages": state["messages"] + [message],
@@ -369,6 +468,224 @@ def calculate_stat_arb_signals(prices_df):
     }
 
 
+def is_intraday_mode(strategy_mode: str | None, data_timeframe: str | None) -> bool:
+    if strategy_mode and "intra" in strategy_mode.lower():
+        return True
+    if data_timeframe:
+        normalized = data_timeframe.lower()
+        return any(unit in normalized for unit in ["m", "min", "hour", "hr", "h"])
+    return False
+
+
+def timeframe_to_minutes(label: str | None, *, default: int = 30) -> int:
+    if not label:
+        return default
+    match = re.match(r"(?i)(\d+)(?:\s*)([a-z]+)", label.strip())
+    if not match:
+        return default
+    value = int(match.group(1))
+    unit = match.group(2).lower()
+    if unit.startswith("m"):
+        return max(1, value)
+    if unit.startswith("h"):
+        return max(1, value * 60)
+    if unit.startswith("d"):
+        # Approximate US market hours (6.5 hours)
+        return max(1, value * 390)
+    return default
+
+
+def analyze_intraday_signals(prices_df: pd.DataFrame, timeframe_label: str | None) -> dict:
+    vwap = calculate_intraday_vwap(prices_df)
+    crossover = detect_short_term_ma_crossover(prices_df)
+    momentum = identify_momentum_bursts(prices_df)
+    volume = detect_volume_anomalies(prices_df)
+
+    components = {
+        "vwap": vwap,
+        "ma_crossover": crossover,
+        "momentum": momentum,
+        "volume_anomaly": volume,
+    }
+
+    score = float(sum(comp["score"] for comp in components.values()))
+    normalized_score = score / max(len(components), 1)
+
+    if normalized_score > 0.15:
+        signal = "bullish"
+    elif normalized_score < -0.15:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    confidence = min(1.0, max(0.05, abs(normalized_score)))
+    timeframe_minutes = timeframe_to_minutes(timeframe_label, default=30)
+    ttl_minutes = max(15, timeframe_minutes * 2)
+
+    last_timestamp = pd.to_datetime(prices_df["time"].iloc[-1])
+    window = pd.Timedelta(minutes=ttl_minutes)
+    execution_window = {
+        "start": (last_timestamp - window).isoformat(),
+        "end": (last_timestamp + window).isoformat(),
+    }
+
+    risk_parameters = build_intraday_risk_parameters(prices_df, timeframe_minutes)
+
+    reasoning = {
+        name: {
+            "signal": comp["signal"],
+            "score": round(safe_float(comp["score"]), 3),
+            "metrics": normalize_pandas(comp["metrics"]),
+        }
+        for name, comp in components.items()
+    }
+    reasoning["composite"] = {
+        "signal": signal,
+        "score": round(normalized_score, 3),
+    }
+
+    return {
+        "signal": signal,
+        "confidence": confidence,
+        "execution_window": execution_window,
+        "signal_ttl": f"{ttl_minutes}m",
+        "risk_parameters": risk_parameters,
+        "reasoning": reasoning,
+    }
+
+
+def calculate_intraday_vwap(prices_df: pd.DataFrame) -> dict:
+    df = prices_df.copy()
+    df["typical_price"] = (df["high"] + df["low"] + df["close"]) / 3
+    df["cum_tp_vol"] = (df["typical_price"] * df["volume"]).cumsum()
+    df["cum_vol"] = df["volume"].cumsum().replace(0, np.nan)
+    df["vwap"] = df["cum_tp_vol"] / df["cum_vol"]
+
+    latest = df.iloc[-1]
+    vwap_value = safe_float(latest.get("vwap"), default=latest["close"])
+    deviation = 0.0
+    if vwap_value:
+        deviation = safe_float((latest["close"] - vwap_value) / vwap_value)
+
+    if deviation > 0.002:
+        signal = "bullish"
+    elif deviation < -0.002:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    score = float(np.clip(deviation * 10, -1.0, 1.0))
+    metrics = {
+        "vwap": vwap_value,
+        "price_vs_vwap": deviation,
+    }
+    return {"signal": signal, "score": score, "metrics": metrics}
+
+
+def detect_short_term_ma_crossover(prices_df: pd.DataFrame) -> dict:
+    close = prices_df["close"]
+    fast = close.rolling(window=5).mean()
+    slow = close.rolling(window=21).mean()
+
+    if len(fast.dropna()) == 0 or len(slow.dropna()) == 0:
+        return {"signal": "neutral", "score": 0.0, "metrics": {"fast_ma": None, "slow_ma": None}}
+
+    diff = safe_float(fast.iloc[-1] - slow.iloc[-1])
+    slope = safe_float(fast.diff().iloc[-1])
+
+    if diff > 0 and slope > 0:
+        signal = "bullish"
+    elif diff < 0 and slope < 0:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    score = float(np.clip((diff / slow.iloc[-1]) * 5 if slow.iloc[-1] else 0, -1.0, 1.0))
+    metrics = {
+        "fast_ma": safe_float(fast.iloc[-1]),
+        "slow_ma": safe_float(slow.iloc[-1]),
+        "ma_slope": slope,
+    }
+    return {"signal": signal, "score": score, "metrics": metrics}
+
+
+def identify_momentum_bursts(prices_df: pd.DataFrame) -> dict:
+    returns = prices_df["close"].pct_change().dropna()
+    if returns.empty:
+        return {"signal": "neutral", "score": 0.0, "metrics": {}}
+
+    short_window = returns.tail(5)
+    burst = safe_float(short_window.sum())
+    volatility = safe_float(returns.tail(30).std()) or 1e-4
+    burst_score = float(np.clip(burst / (volatility * 3), -1.5, 1.5))
+
+    if burst_score > 0.2:
+        signal = "bullish"
+    elif burst_score < -0.2:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    metrics = {
+        "short_term_return": burst,
+        "volatility": volatility,
+    }
+    return {"signal": signal, "score": burst_score, "metrics": metrics}
+
+
+def detect_volume_anomalies(prices_df: pd.DataFrame) -> dict:
+    volume = prices_df["volume"].fillna(0)
+    if volume.empty:
+        return {"signal": "neutral", "score": 0.0, "metrics": {}}
+
+    avg_volume = volume.rolling(window=30, min_periods=5).mean().iloc[-1]
+    latest_volume = safe_float(volume.iloc[-1])
+    if not avg_volume or avg_volume == 0:
+        ratio = 1.0
+    else:
+        ratio = latest_volume / avg_volume
+
+    if ratio > 1.5:
+        signal = "bullish"
+    elif ratio < 0.7:
+        signal = "bearish"
+    else:
+        signal = "neutral"
+
+    score = float(np.clip((ratio - 1.0), -1.0, 1.0))
+    metrics = {
+        "volume_ratio": ratio,
+        "average_volume": avg_volume,
+        "latest_volume": latest_volume,
+    }
+    return {"signal": signal, "score": score, "metrics": metrics}
+
+
+def build_intraday_risk_parameters(prices_df: pd.DataFrame, timeframe_minutes: int) -> dict:
+    returns = prices_df["close"].pct_change().dropna()
+    if returns.empty:
+        return {
+            "stop_loss_pct": 0.01,
+            "take_profit_pct": 0.02,
+            "max_position_pct": 0.12,
+            "volatility_target": 0.20,
+        }
+
+    window = max(5, min(len(returns), timeframe_minutes))
+    recent = returns.tail(window)
+    realized_vol = float(recent.std())
+    stop_loss = float(np.clip(realized_vol * 4, 0.005, 0.06))
+    take_profit = float(np.clip(realized_vol * 6, 0.01, 0.10))
+    max_position = 0.10 if timeframe_minutes <= 30 else 0.15
+
+    return {
+        "stop_loss_pct": stop_loss,
+        "take_profit_pct": take_profit,
+        "max_position_pct": max_position,
+        "volatility_target": float(np.sqrt(252) * realized_vol),
+    }
+
+
 def weighted_signal_combination(signals, weights):
     """
     Combines multiple trading signals using a weighted approach
@@ -401,7 +718,7 @@ def weighted_signal_combination(signals, weights):
     else:
         signal = "neutral"
 
-    return {"signal": signal, "confidence": abs(final_score)}
+    return {"signal": signal, "confidence": min(1.0, abs(final_score)), "composite_score": final_score}
 
 
 def normalize_pandas(obj):
