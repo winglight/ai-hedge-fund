@@ -87,6 +87,9 @@ export function PortfolioManagerNode({
   };
   
   const outputNodeData = getOutputNodeDataForFlow(currentFlowId?.toString() || null);
+  const strategyStatus = outputNodeData?.ibbot_strategy;
+  const strategyModeLabel = (outputNodeData?.strategy_mode || strategyStatus?.bundle?.strategy_mode || 'standard')
+    .replace(/_/g, ' ');
 
   // Get connected agent IDs
   const { connectedAgentIds } = useOutputNodeConnection(id);
@@ -131,6 +134,24 @@ export function PortfolioManagerNode({
                   >
                     View Investment Report
                   </Button>
+                )}
+                {outputNodeData && (
+                  <div className="rounded border border-border bg-muted/20 p-2 text-xs text-muted-foreground">
+                    <div>
+                      Strategy mode:{' '}
+                      <span className="capitalize text-foreground">{strategyModeLabel}</span>
+                    </div>
+                    <div>
+                      IBBOT:{' '}
+                      <span className={strategyStatus?.available ? 'text-green-600' : strategyStatus?.error ? 'text-destructive' : ''}>
+                        {strategyStatus?.available
+                          ? 'Bundle ready'
+                          : strategyStatus?.error
+                            ? 'Conversion failed'
+                            : 'Not packaged'}
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="flex flex-col gap-2">

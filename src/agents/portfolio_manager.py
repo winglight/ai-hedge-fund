@@ -28,6 +28,8 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
     portfolio = state["data"]["portfolio"]
     analyst_signals = state["data"]["analyst_signals"]
     tickers = state["data"]["tickers"]
+    workflow_metadata = state["data"].get("workflow_metadata", {})
+    strategy_mode = state["metadata"].get("strategy_mode") or workflow_metadata.get("strategy_mode")
 
     position_limits = {}
     current_prices = {}
@@ -83,6 +85,7 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
         portfolio=portfolio,
         agent_id=agent_id,
         state=state,
+        strategy_mode=strategy_mode,
     )
     message = HumanMessage(
         content=json.dumps({ticker: decision.model_dump() for ticker, decision in result.decisions.items()}),
@@ -200,6 +203,7 @@ def generate_trading_decision(
         portfolio: dict[str, float],
         agent_id: str,
         state: AgentState,
+        strategy_mode: str | None = None,
 ) -> PortfolioManagerOutput:
     """Get decisions from the LLM with deterministic constraints and a minimal prompt."""
 
@@ -227,25 +231,32 @@ def generate_trading_decision(
     compact_allowed = {t: allowed_actions_full[t] for t in tickers_for_llm}
 
     # Minimal prompt template
+    strategy_context = (
+        f"Strategy mode: {strategy_mode}. Align each trade with this horizon and risk appetite."
+        if strategy_mode
+        else "Strategy mode: standard swing. Use balanced trade horizons."
+    )
+
     template = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 "You are a portfolio manager.\n"
+                "{strategy_context}\n"
                 "Inputs per ticker: analyst signals and allowed actions with max qty (already validated).\n"
                 "Pick one allowed action per ticker and a quantity ≤ the max. "
-                "Keep reasoning very concise (max 100 chars). No cash or margin math. Return JSON only."
+                "Keep reasoning very concise (max 100 chars). No cash or margin math. Return JSON only.",
             ),
             (
                 "human",
                 "Signals:\n{signals}\n\n"
                 "Allowed:\n{allowed}\n\n"
                 "Format:\n"
-                "{{\n"
-                '  "decisions": {{\n'
-                '    "TICKER": {{"action":"...","quantity":int,"confidence":int,"reasoning":"..."}}\n'
-                "  }}\n"
-                "}}"
+                "{\n"
+                '  "decisions": {\n'
+                '    "TICKER": {"action":"...","quantity":int,"confidence":int,"reasoning":"..."}\n'
+                "  }\n"
+                "}"
             ),
         ]
     )
@@ -253,6 +264,7 @@ def generate_trading_decision(
     prompt_data = {
         "signals": json.dumps(compact_signals, separators=(",", ":"), ensure_ascii=False),
         "allowed": json.dumps(compact_allowed, separators=(",", ":"), ensure_ascii=False),
+        "strategy_context": strategy_context,
     }
     prompt = template.invoke(prompt_data)
 

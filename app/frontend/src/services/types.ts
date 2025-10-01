@@ -102,4 +102,44 @@ export interface BacktestPerformanceMetrics {
   long_short_ratio?: number;
   gross_exposure?: number;
   net_exposure?: number;
-} 
+}
+
+export interface StrategySignalPayload {
+  symbol: string;
+  action: string;
+  quantity: number;
+  confidence?: number | null;
+  rationale?: string | null;
+  source_agent: string;
+  model_provider?: string | null;
+  generated_at: string;
+  metadata?: Record<string, any>;
+}
+
+export interface RiskDirectivePayload {
+  symbol: string;
+  max_notional?: number | null;
+  max_shares?: number | null;
+  reference_price?: number | null;
+  source_agent: string;
+  generated_at: string;
+  metadata?: Record<string, any>;
+}
+
+export interface IbbotStrategyBundle {
+  data_provider?: string | null;
+  model_provider?: string | null;
+  generated_at: string;
+  strategy_mode?: string | null;
+  data_timeframe?: string | null;
+  workflow_metadata?: Record<string, any>;
+  raw_decisions: Record<string, any>;
+  signals: StrategySignalPayload[];
+  risk_directives: RiskDirectivePayload[];
+}
+
+export interface StrategyPackagingStatus {
+  available: boolean;
+  error?: string;
+  bundle?: IbbotStrategyBundle;
+}

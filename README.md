@@ -119,6 +119,21 @@ You can optionally specify the start and end dates to make decisions over a spec
 poetry run python src/main.py --ticker AAPL,MSFT,NVDA --start-date 2024-01-01 --end-date 2024-03-01
 ```
 
+#### Enable IBBOT strategy mode
+
+Packaging the run output for Interactive Brokers Bots (IBBOT) requires enabling strategy mode so the risk and portfolio agents
+optimize trades for the appropriate horizon.
+
+- **CLI:** pass `--strategy-mode` (for example `--strategy-mode intra_day` or `--strategy-mode swing`) to activate packaging. You
+  can optionally pair it with `--data-timeframe` to hint the market data cadence sent to analysts.
+- **Web app:** choose a strategy from the *Strategy* dropdown on the portfolio start node. The selection is saved with the flow
+  so subsequent runs reuse it automatically.
+- **Persisted workflows:** strategy mode and timeframe are stored in `workflow_metadata` and propagate through the graph so the
+  risk and portfolio agents align position limits with the requested style.
+
+When strategy mode is enabled the final run output includes an IBBOT-compatible bundle alongside the legacy decision JSON. If
+packaging fails, the UI surfaces a clear conversion error while still displaying analyst decisions.
+
 #### Run the Backtester
 ```bash
 poetry run python src/backtester.py --ticker AAPL,MSFT,NVDA
