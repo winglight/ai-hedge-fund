@@ -364,6 +364,16 @@ def parse_cli_inputs(
         dest="provider_options",
         help="Provider-specific option in key=value format. Can be provided multiple times.",
     )
+    parser.add_argument(
+        "--strategy-mode",
+        type=str,
+        help="Trading strategy mode (e.g., swing, intra_day) used for IBBOT packaging.",
+    )
+    parser.add_argument(
+        "--data-timeframe",
+        type=str,
+        help="Market data timeframe hint (e.g., 1d, 5m).",
+    )
 
     args = parser.parse_args()
 

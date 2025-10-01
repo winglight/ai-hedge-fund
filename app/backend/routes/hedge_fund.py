@@ -180,11 +180,41 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                     return
 
                 # Send the final result
+                decisions = result.get("data", {}).get("portfolio_decisions")
+                if decisions is None:
+                    decisions = parse_hedge_fund_response(result.get("messages", [])[-1].content)
+                strategy_payload = result.get("data", {}).get("ibbot_strategy", {"available": False})
+
+                if strategy_payload.get("available"):
+                    progress.update_status(
+                        "ibbot_strategy_packager",
+                        None,
+                        "Bundle ready",
+                        context={
+                            "strategy_mode": strategy_mode,
+                            "data_timeframe": data_timeframe,
+                        },
+                    )
+                elif strategy_payload.get("error"):
+                    progress.update_status(
+                        "ibbot_strategy_packager",
+                        None,
+                        "Conversion failed",
+                        context={
+                            "error": strategy_payload.get("error"),
+                            "strategy_mode": strategy_mode,
+                        },
+                    )
+
                 final_data = CompleteEvent(
                     data={
-                        "decisions": parse_hedge_fund_response(result.get("messages", [])[-1].content),
+                        "decisions": decisions,
                         "analyst_signals": result.get("data", {}).get("analyst_signals", {}),
                         "current_prices": result.get("data", {}).get("current_prices", {}),
+                        "ibbot_strategy": strategy_payload,
+                        "strategy_mode": strategy_mode,
+                        "data_timeframe": data_timeframe,
+                        "workflow_metadata": result.get("data", {}).get("workflow_metadata", {}),
                     },
                     data_provider=data_provider,
                     data_granularity=data_granularity,

@@ -1,4 +1,5 @@
 import { LanguageModel } from '@/data/models';
+import type { StrategyPackagingStatus } from '@/services/types';
 import { createContext, ReactNode, useCallback, useContext, useState } from 'react';
 
 export type NodeStatus = 'IDLE' | 'IN_PROGRESS' | 'COMPLETE' | 'ERROR';
@@ -27,6 +28,11 @@ export interface AgentNodeData {
 export interface OutputNodeData {
   decisions: Record<string, any>;
   analyst_signals: Record<string, any>;
+  current_prices?: Record<string, number>;
+  ibbot_strategy?: StrategyPackagingStatus;
+  strategy_mode?: string | null;
+  data_timeframe?: string | null;
+  workflow_metadata?: Record<string, any>;
   // Backtest-specific fields
   performance_metrics?: {
     sharpe_ratio?: number;

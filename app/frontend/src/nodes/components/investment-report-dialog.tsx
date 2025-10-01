@@ -27,6 +27,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { extractBaseAgentKey } from '@/data/node-mappings';
+import type { StrategyPackagingStatus } from '@/services/types';
 import { createAgentDisplayNames } from '@/utils/text-utils';
 import { ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -106,6 +107,20 @@ export function InvestmentReportDialog({
     );
 
   const agentDisplayNames = createAgentDisplayNames(agents);
+  const strategyStatus: StrategyPackagingStatus | undefined = outputNodeData.ibbot_strategy;
+  const strategyModeLabel = (outputNodeData.strategy_mode || strategyStatus?.bundle?.strategy_mode || 'standard')
+    .replace(/_/g, ' ');
+  const bundle = strategyStatus?.bundle;
+  let generatedLabel: string | null = null;
+  if (bundle?.generated_at) {
+    const timestamp = new Date(bundle.generated_at);
+    generatedLabel = Number.isNaN(timestamp.getTime()) ? bundle.generated_at : timestamp.toLocaleString();
+  }
+  const packagingBadge = strategyStatus?.available
+    ? { label: 'Bundle ready', variant: 'success' as const }
+    : strategyStatus?.error
+      ? { label: 'Conversion failed', variant: 'destructive' as const }
+      : { label: 'Not available', variant: 'outline' as const };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -115,6 +130,52 @@ export function InvestmentReportDialog({
         </DialogHeader>
 
         <div className="space-y-8 my-4">
+          {/* Strategy Integration */}
+          <section>
+            <h2 className="text-lg font-semibold mb-4">Strategy Integration</h2>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>
+                  Workflow settings and IBBOT packaging readiness
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Strategy mode</span>
+                  <Badge variant="outline" className="capitalize">{strategyModeLabel}</Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">IBBOT packaging</span>
+                  <Badge variant={packagingBadge.variant}>{packagingBadge.label}</Badge>
+                </div>
+                {strategyStatus?.error && (
+                  <p className="text-sm text-destructive">
+                    {strategyStatus.error}
+                  </p>
+                )}
+                {bundle && (
+                  <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+                    <div>
+                      <span className="font-medium text-foreground">Signals packaged:</span>{' '}
+                      {bundle.signals.length}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Risk directives:</span>{' '}
+                      {bundle.risk_directives.length}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Generated:</span>{' '}
+                      {generatedLabel || '—'}
+                    </div>
+                    <div>
+                      <span className="font-medium text-foreground">Data provider:</span>{' '}
+                      {bundle.data_provider || '—'}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </section>
           {/* Summary Section */}
           <section>
             <h2 className="text-lg font-semibold mb-4">Summary</h2>

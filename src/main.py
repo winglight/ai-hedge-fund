@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from dotenv import load_dotenv
@@ -8,6 +9,10 @@ import questionary
 from src.agents.portfolio_manager import portfolio_management_agent
 from src.agents.risk_manager import risk_management_agent
 from src.graph.state import AgentState
+from src.integrations.ibbot.strategy import (
+    StrategyConversionError,
+    attach_strategy_bundle,
+)
 from src.utils.display import print_trading_output
 from src.utils.analysts import ANALYST_ORDER, get_analyst_nodes
 from src.utils.progress import progress
@@ -26,6 +31,8 @@ import json
 load_dotenv()
 
 init(autoreset=True)
+
+logger = logging.getLogger(__name__)
 
 
 def parse_hedge_fund_response(response):
@@ -104,9 +111,39 @@ def run_hedge_fund(
                 },
             )
 
+        decisions = parse_hedge_fund_response(final_state["messages"][-1].content)
+        final_state.setdefault("data", {})
+        if decisions is not None:
+            final_state["data"]["portfolio_decisions"] = decisions
+
+        if decisions:
+            try:
+                attach_strategy_bundle(final_state, decisions)
+            except StrategyConversionError as exc:
+                logger.warning("IBBOT strategy packaging failed: %s", exc)
+            except Exception:
+                logger.exception("Unexpected error while preparing IBBOT strategy bundle")
+                final_state["data"]["ibbot_strategy"] = {
+                    "available": False,
+                    "error": "unexpected_error",
+                }
+        else:
+            final_state["data"]["ibbot_strategy"] = {
+                "available": False,
+                "error": "missing_decisions",
+            }
+
+        workflow_metadata = final_state["data"].get("workflow_metadata", {})
+        strategy_mode = final_state["metadata"].get("strategy_mode") or workflow_metadata.get("strategy_mode")
+        data_timeframe = final_state["metadata"].get("data_timeframe") or workflow_metadata.get("data_timeframe")
+
         return {
-            "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
-            "analyst_signals": final_state["data"]["analyst_signals"],
+            "decisions": decisions,
+            "analyst_signals": final_state["data"].get("analyst_signals", {}),
+            "current_prices": final_state["data"].get("current_prices", {}),
+            "ibbot_strategy": final_state["data"].get("ibbot_strategy", {"available": False}),
+            "strategy_mode": strategy_mode,
+            "data_timeframe": data_timeframe,
         }
     finally:
         # Stop progress tracking

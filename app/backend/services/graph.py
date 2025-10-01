@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
@@ -10,9 +11,13 @@ from src.agents.risk_manager import risk_management_agent
 from src.main import start
 from src.utils.analysts import ANALYST_CONFIG
 from src.graph.state import AgentState
+from src.integrations.ibbot.strategy import attach_strategy_bundle
 from src.data.providers import DEFAULT_PROVIDER_NAME, provider_context
 
 DATA_PROVIDER_SETTING = "DATA_PROVIDER"
+
+
+logger = logging.getLogger(__name__)
 
 
 def extract_base_agent_key(unique_id: str) -> str:
@@ -166,7 +171,7 @@ def run_graph(
         else "end_of_day"
     )
     with provider_context(provider_name, credentials):
-        return graph.invoke(
+        final_state = graph.invoke(
             {
                 "messages": [
                     HumanMessage(
@@ -198,6 +203,38 @@ def run_graph(
                 },
             },
         )
+
+    messages = final_state.get("messages", [])
+    decisions = None
+    if messages:
+        try:
+            decisions = parse_hedge_fund_response(messages[-1].content)
+        except Exception:
+            decisions = None
+
+    data_block = final_state.setdefault("data", {})
+    if decisions is not None:
+        data_block["portfolio_decisions"] = decisions
+
+    if decisions:
+        try:
+            bundle, error = attach_strategy_bundle(final_state, decisions)
+        except Exception:
+            logger.exception("Unexpected error while preparing IBBOT strategy bundle")
+            data_block["ibbot_strategy"] = {
+                "available": False,
+                "error": "unexpected_error",
+            }
+        else:
+            if error:
+                logger.warning("IBBOT strategy packaging failed: %s", error)
+    else:
+        data_block.setdefault(
+            "ibbot_strategy",
+            {"available": False, "error": "missing_decisions"},
+        )
+
+    return final_state
 
 
 def parse_hedge_fund_response(response):

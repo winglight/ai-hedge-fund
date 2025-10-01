@@ -51,6 +51,10 @@ class GraphEdge(BaseModel):
 class HedgeFundResponse(BaseModel):
     decisions: dict
     analyst_signals: dict
+    current_prices: dict | None = None
+    ibbot_strategy: dict | None = None
+    strategy_mode: str | None = None
+    data_timeframe: str | None = None
 
 
 class ErrorResponse(BaseModel):

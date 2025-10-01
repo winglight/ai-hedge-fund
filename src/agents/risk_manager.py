@@ -13,6 +13,8 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
     portfolio = state["data"]["portfolio"]
     data = state["data"]
     tickers = data["tickers"]
+    workflow_metadata = data.get("workflow_metadata", {})
+    strategy_mode = state["metadata"].get("strategy_mode") or workflow_metadata.get("strategy_mode")
     api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
     
     # Initialize risk analysis for each ticker
@@ -238,6 +240,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
                 "ttl_hints": ttl_hints,
                 "execution_windows": execution_hints,
                 "applied_max_position_pct": max_position_pct_hint,
+                "strategy_mode": strategy_mode,
             },
         }
         
