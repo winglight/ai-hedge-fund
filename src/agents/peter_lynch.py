@@ -50,8 +50,7 @@ def peter_lynch_agent(state: AgentState, agent_id: str = "peter_lynch_agent"):
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Relevant line items for Peter Lynch's approach
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "earnings_per_share",
                 "net_income",
@@ -64,8 +63,7 @@ def peter_lynch_agent(state: AgentState, agent_id: str = "peter_lynch_agent"):
                 "total_debt",
                 "shareholders_equity",
                 "outstanding_shares",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=5,
             api_key=api_key,

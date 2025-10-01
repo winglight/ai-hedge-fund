@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from src.llm.models import ModelProvider
 from enum import Enum
 from app.backend.services.graph import extract_base_agent_key
+from src.data.providers import DEFAULT_PROVIDER_NAME, has_provider
 
 
 class FlowRunStatus(str, Enum):
@@ -68,6 +69,8 @@ class BaseHedgeFundRequest(BaseModel):
     margin_requirement: float = 0.0
     portfolio_positions: Optional[List[PortfolioPosition]] = None
     api_keys: Optional[Dict[str, str]] = None
+    data_provider: Optional[str] = Field(default=DEFAULT_PROVIDER_NAME)
+    data_provider_options: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
     def get_agent_ids(self) -> List[str]:
         """Extract agent IDs from graph structure"""
@@ -89,6 +92,16 @@ class BaseHedgeFundRequest(BaseModel):
                     )
         # Fallback to global model settings
         return self.model_name, self.model_provider
+
+    @field_validator('data_provider')
+    @classmethod
+    def validate_data_provider(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        provider_name = value.lower()
+        if not has_provider(provider_name):
+            raise ValueError(f"Unknown data provider '{value}'")
+        return provider_name
 
 
 class BacktestRequest(BaseHedgeFundRequest):

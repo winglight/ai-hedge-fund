@@ -60,6 +60,8 @@ if __name__ == "__main__":
         model_provider=inputs.model_provider,
         selected_analysts=inputs.selected_analysts,
         initial_margin_requirement=inputs.margin_requirement,
+        data_provider=inputs.data_provider,
+        provider_credentials=inputs.provider_options,
     )
 
     # Run the backtest with graceful exit handling

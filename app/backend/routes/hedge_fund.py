@@ -12,6 +12,7 @@ from app.backend.services.backtest_service import BacktestService
 from app.backend.services.api_key_service import ApiKeyService
 from src.utils.progress import progress
 from src.utils.analysts import get_agents_list
+from src.data.providers import DEFAULT_PROVIDER_NAME
 
 router = APIRouter(prefix="/hedge-fund")
 
@@ -29,6 +30,8 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
         if not request_data.api_keys:
             api_key_service = ApiKeyService(db)
             request_data.api_keys = api_key_service.get_api_keys_dict()
+
+        data_provider = request_data.data_provider or DEFAULT_PROVIDER_NAME
 
         # Create the portfolio
         portfolio = create_portfolio(request_data.initial_cash, request_data.margin_requirement, request_data.tickers, request_data.portfolio_positions)
@@ -68,7 +71,14 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
 
             # Simple handler to add updates to the queue
             def progress_handler(agent_name, ticker, status, analysis, timestamp):
-                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, status=status, timestamp=timestamp, analysis=analysis)
+                event = ProgressUpdateEvent(
+                    agent=agent_name,
+                    ticker=ticker,
+                    status=status,
+                    timestamp=timestamp,
+                    analysis=analysis,
+                    data_provider=data_provider,
+                )
                 progress_queue.put_nowait(event)
 
             # Register our handler with the progress tracker
@@ -93,7 +103,7 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                 disconnect_task = asyncio.create_task(wait_for_disconnect())
                 
                 # Send initial message
-                yield StartEvent().to_sse()
+                yield StartEvent(data_provider=data_provider).to_sse()
 
                 # Stream progress updates until run_task completes or client disconnects
                 while not run_task.done():
@@ -132,7 +142,8 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                         "decisions": parse_hedge_fund_response(result.get("messages", [])[-1].content),
                         "analyst_signals": result.get("data", {}).get("analyst_signals", {}),
                         "current_prices": result.get("data", {}).get("current_prices", {}),
-                    }
+                    },
+                    data_provider=data_provider,
                 )
                 yield final_data.to_sse()
 
@@ -180,11 +191,13 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
         if hasattr(model_provider, "value"):
             model_provider = model_provider.value
 
+        data_provider = request_data.data_provider or DEFAULT_PROVIDER_NAME
+
         # Create the portfolio (same as /run endpoint)
         portfolio = create_portfolio(
-            request_data.initial_capital, 
-            request_data.margin_requirement, 
-            request_data.tickers, 
+            request_data.initial_capital,
+            request_data.margin_requirement,
+            request_data.tickers,
             request_data.portfolio_positions
         )
 
@@ -224,7 +237,14 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
 
             # Global progress handler to capture individual agent updates during backtest
             def progress_handler(agent_name, ticker, status, analysis, timestamp):
-                event = ProgressUpdateEvent(agent=agent_name, ticker=ticker, status=status, timestamp=timestamp, analysis=analysis)
+                event = ProgressUpdateEvent(
+                    agent=agent_name,
+                    ticker=ticker,
+                    status=status,
+                    timestamp=timestamp,
+                    analysis=analysis,
+                    data_provider=data_provider,
+                )
                 progress_queue.put_nowait(event)
 
             # Progress callback to handle backtest-specific updates
@@ -235,7 +255,8 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         ticker=None,
                         status=f"Processing {update['current_date']} ({update['current_step']}/{update['total_dates']})",
                         timestamp=None,
-                        analysis=None
+                        analysis=None,
+                        data_provider=data_provider,
                     )
                     progress_queue.put_nowait(event)
                 elif update["type"] == "backtest_result":
@@ -251,7 +272,8 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         ticker=None,
                         status=f"Completed {backtest_result.date} - Portfolio: ${backtest_result.portfolio_value:,.2f}",
                         timestamp=None,
-                        analysis=analysis_data
+                        analysis=analysis_data,
+                        data_provider=data_provider,
                     )
                     progress_queue.put_nowait(event)
 
@@ -268,7 +290,7 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                 disconnect_task = asyncio.create_task(wait_for_disconnect())
                 
                 # Send initial message
-                yield StartEvent().to_sse()
+                yield StartEvent(data_provider=data_provider).to_sse()
 
                 # Stream progress updates until backtest_task completes or client disconnects
                 while not backtest_task.done():
@@ -308,7 +330,8 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         "performance_metrics": performance_metrics.model_dump(),
                         "final_portfolio": result["final_portfolio"],
                         "total_days": len(result["results"]),
-                    }
+                    },
+                    data_provider=data_provider,
                 )
                 yield final_data.to_sse()
 

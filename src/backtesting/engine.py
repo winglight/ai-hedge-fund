@@ -22,6 +22,7 @@ from src.tools.api import (
     get_financial_metrics,
     get_insider_trades,
 )
+from src.data.providers import DEFAULT_PROVIDER_NAME, provider_context
 
 
 class BacktestEngine:
@@ -44,6 +45,8 @@ class BacktestEngine:
         model_provider: str,
         selected_analysts: list[str] | None,
         initial_margin_requirement: float,
+        data_provider: str = DEFAULT_PROVIDER_NAME,
+        provider_credentials: dict | None = None,
     ) -> None:
         self._agent = agent
         self._tickers = tickers
@@ -77,6 +80,12 @@ class BacktestEngine:
             "gross_exposure": None,
             "net_exposure": None,
         }
+        self._data_provider = data_provider
+        self._provider_credentials = provider_credentials or {}
+        self._provider_kwargs = {
+            "provider": self._data_provider,
+            "credentials": self._provider_credentials,
+        }
 
     def _prefetch_data(self) -> None:
         end_date_dt = datetime.strptime(self._end_date, "%Y-%m-%d")
@@ -84,13 +93,25 @@ class BacktestEngine:
         start_date_str = start_date_dt.strftime("%Y-%m-%d")
 
         for ticker in self._tickers:
-            get_prices(ticker, start_date_str, self._end_date)
-            get_financial_metrics(ticker, self._end_date, limit=10)
-            get_insider_trades(ticker, self._end_date, start_date=self._start_date, limit=1000)
-            get_company_news(ticker, self._end_date, start_date=self._start_date, limit=1000)
-        
+            get_prices(ticker, start_date_str, self._end_date, **self._provider_kwargs)
+            get_financial_metrics(ticker, self._end_date, limit=10, **self._provider_kwargs)
+            get_insider_trades(
+                ticker,
+                self._end_date,
+                start_date=self._start_date,
+                limit=1000,
+                **self._provider_kwargs,
+            )
+            get_company_news(
+                ticker,
+                self._end_date,
+                start_date=self._start_date,
+                limit=1000,
+                **self._provider_kwargs,
+            )
+
         # Preload data for SPY for benchmark comparison
-        get_prices("SPY", self._start_date, self._end_date)
+        get_prices("SPY", self._start_date, self._end_date, **self._provider_kwargs)
 
 
     def run_backtest(self) -> PerformanceMetrics:
@@ -116,7 +137,12 @@ class BacktestEngine:
                 missing_data = False
                 for ticker in self._tickers:
                     try:
-                        price_data = get_price_data(ticker, previous_date_str, current_date_str)
+                        price_data = get_price_data(
+                            ticker,
+                            previous_date_str,
+                            current_date_str,
+                            **self._provider_kwargs,
+                        )
                         if price_data.empty:
                             missing_data = True
                             break
@@ -129,16 +155,17 @@ class BacktestEngine:
             except Exception:
                 continue
 
-            agent_output = self._agent_controller.run_agent(
-                self._agent,
-                tickers=self._tickers,
-                start_date=lookback_start,
-                end_date=current_date_str,
-                portfolio=self._portfolio,
-                model_name=self._model_name,
-                model_provider=self._model_provider,
-                selected_analysts=self._selected_analysts,
-            )
+            with provider_context(self._data_provider, self._provider_credentials):
+                agent_output = self._agent_controller.run_agent(
+                    self._agent,
+                    tickers=self._tickers,
+                    start_date=lookback_start,
+                    end_date=current_date_str,
+                    portfolio=self._portfolio,
+                    model_name=self._model_name,
+                    model_provider=self._model_provider,
+                    selected_analysts=self._selected_analysts,
+                )
             decisions = agent_output["decisions"]
 
             executed_trades: Dict[str, int] = {}

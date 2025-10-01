@@ -36,8 +36,7 @@ def bill_ackman_agent(state: AgentState, agent_id: str = "bill_ackman_agent"):
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Request multiple periods of data (annual or TTM) for a more robust long-term view.
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "operating_margin",
                 "debt_to_equity",
@@ -48,8 +47,7 @@ def bill_ackman_agent(state: AgentState, agent_id: str = "bill_ackman_agent"):
                 "outstanding_shares",
                 # Optional: intangible_assets if available
                 # "intangible_assets"
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=5,
             api_key=api_key,

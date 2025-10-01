@@ -48,8 +48,7 @@ def phil_fisher_agent(state: AgentState, agent_id: str = "phil_fisher_agent"):
         #   - Management Efficiency & Leverage: total_debt, shareholders_equity, free_cash_flow
         #   - Valuation: net_income, free_cash_flow (for P/E, P/FCF), ebit, ebitda
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "net_income",
                 "earnings_per_share",
@@ -63,8 +62,7 @@ def phil_fisher_agent(state: AgentState, agent_id: str = "phil_fisher_agent"):
                 "cash_and_equivalents",
                 "ebit",
                 "ebitda",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=5,
             api_key=api_key,

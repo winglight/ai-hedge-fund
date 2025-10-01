@@ -18,6 +18,7 @@ class StartEvent(BaseEvent):
 
     type: Literal["start"] = "start"
     timestamp: Optional[str] = None
+    data_provider: Optional[str] = None
 
 class ProgressUpdateEvent(BaseEvent):
     """Event containing an agent's progress update"""
@@ -28,6 +29,7 @@ class ProgressUpdateEvent(BaseEvent):
     status: str
     timestamp: Optional[str] = None
     analysis: Optional[str] = None
+    data_provider: Optional[str] = None
 
 class ErrorEvent(BaseEvent):
     """Event indicating an error occurred"""
@@ -43,3 +45,4 @@ class CompleteEvent(BaseEvent):
     type: Literal["complete"] = "complete"
     data: Dict[str, Any]
     timestamp: Optional[str] = None
+    data_provider: Optional[str] = None
