@@ -15,6 +15,7 @@ from src.utils.visualize import save_graph_as_png
 from src.cli.input import (
     parse_cli_inputs,
 )
+from src.data.providers import provider_context, DEFAULT_PROVIDER_NAME
 
 import argparse
 from datetime import datetime
@@ -52,6 +53,8 @@ def run_hedge_fund(
     selected_analysts: list[str] = [],
     model_name: str = "gpt-4.1",
     model_provider: str = "OpenAI",
+    data_provider: str = DEFAULT_PROVIDER_NAME,
+    provider_options: dict | None = None,
 ):
     # Start progress tracking
     progress.start()
@@ -61,27 +64,28 @@ def run_hedge_fund(
         workflow = create_workflow(selected_analysts if selected_analysts else None)
         agent = workflow.compile()
 
-        final_state = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(
-                        content="Make trading decisions based on the provided data.",
-                    )
-                ],
-                "data": {
-                    "tickers": tickers,
-                    "portfolio": portfolio,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "analyst_signals": {},
+        with provider_context(data_provider, provider_options or {}):
+            final_state = agent.invoke(
+                {
+                    "messages": [
+                        HumanMessage(
+                            content="Make trading decisions based on the provided data.",
+                        )
+                    ],
+                    "data": {
+                        "tickers": tickers,
+                        "portfolio": portfolio,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "analyst_signals": {},
+                    },
+                    "metadata": {
+                        "show_reasoning": show_reasoning,
+                        "model_name": model_name,
+                        "model_provider": model_provider,
+                    },
                 },
-                "metadata": {
-                    "show_reasoning": show_reasoning,
-                    "model_name": model_name,
-                    "model_provider": model_provider,
-                },
-            },
-        )
+            )
 
         return {
             "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
@@ -175,5 +179,7 @@ if __name__ == "__main__":
         selected_analysts=inputs.selected_analysts,
         model_name=inputs.model_name,
         model_provider=inputs.model_provider,
+        data_provider=inputs.data_provider,
+        provider_options=inputs.provider_options,
     )
     print_trading_output(result)

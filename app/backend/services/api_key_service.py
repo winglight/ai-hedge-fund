@@ -20,4 +20,4 @@ class ApiKeyService:
     def get_api_key(self, provider: str) -> Optional[str]:
         """Get a specific API key by provider"""
         api_key = self.repository.get_api_key_by_provider(provider)
-        return api_key.key_value if api_key else None 
+        return api_key.key_value if api_key else None

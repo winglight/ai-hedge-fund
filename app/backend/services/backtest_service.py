@@ -12,7 +12,7 @@ from src.tools.api import (
     get_financial_metrics,
     get_insider_trades,
 )
-from app.backend.services.graph import run_graph_async, parse_hedge_fund_response
+from app.backend.services.graph import run_graph_async, parse_hedge_fund_response, build_provider_credentials
 from app.backend.services.portfolio import create_portfolio
 
 class BacktestService:
@@ -56,6 +56,11 @@ class BacktestService:
         self.model_provider = model_provider
         self.request = request
         self.portfolio_values = []
+        self.data_provider, self.provider_credentials = build_provider_credentials(request)
+        self.provider_kwargs = {
+            "provider": self.data_provider,
+            "credentials": self.provider_credentials,
+        }
 
     def execute_trade(self, ticker: str, action: str, quantity: float, current_price: float) -> int:
         """
@@ -224,13 +229,24 @@ class BacktestService:
         end_date_dt = datetime.strptime(self.end_date, "%Y-%m-%d")
         start_date_dt = end_date_dt - relativedelta(years=1)
         start_date_str = start_date_dt.strftime("%Y-%m-%d")
-        api_key = self.request.api_keys.get("FINANCIAL_DATASETS_API_KEY")
 
         for ticker in self.tickers:
-            get_prices(ticker, start_date_str, self.end_date, api_key=api_key)
-            get_financial_metrics(ticker, self.end_date, limit=10, api_key=api_key)
-            get_insider_trades(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=api_key)
-            get_company_news(ticker, self.end_date, start_date=self.start_date, limit=1000, api_key=api_key)
+            get_prices(ticker, start_date_str, self.end_date, **self.provider_kwargs)
+            get_financial_metrics(ticker, self.end_date, limit=10, **self.provider_kwargs)
+            get_insider_trades(
+                ticker,
+                self.end_date,
+                start_date=self.start_date,
+                limit=1000,
+                **self.provider_kwargs,
+            )
+            get_company_news(
+                ticker,
+                self.end_date,
+                start_date=self.start_date,
+                limit=1000,
+                **self.provider_kwargs,
+            )
 
     def _update_performance_metrics(self, performance_metrics: Dict[str, Any]):
         """Update performance metrics using daily returns."""
@@ -333,7 +349,12 @@ class BacktestService:
 
                 for ticker in self.tickers:
                     try:
-                        price_data = get_price_data(ticker, previous_date_str, current_date_str)
+                        price_data = get_price_data(
+                            ticker,
+                            previous_date_str,
+                            current_date_str,
+                            **self.provider_kwargs,
+                        )
                         if price_data.empty:
                             missing_data = True
                             break

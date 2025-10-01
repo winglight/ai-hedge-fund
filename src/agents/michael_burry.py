@@ -51,8 +51,7 @@ def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"
 
         progress.update_status(agent_id, ticker, "Fetching line items")
         line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "free_cash_flow",
                 "net_income",
                 "total_debt",
@@ -61,8 +60,7 @@ def michael_burry_agent(state: AgentState, agent_id: str = "michael_burry_agent"
                 "total_liabilities",
                 "outstanding_shares",
                 "issuance_or_purchase_of_equity_shares",
-            ],
-            end_date,
+            ], end_date=end_date,
             api_key=api_key,
         )
 

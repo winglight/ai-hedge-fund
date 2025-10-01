@@ -52,8 +52,7 @@ def stanley_druckenmiller_agent(state: AgentState, agent_id: str = "stanley_druc
         #   - Leverage: total_debt, shareholders_equity
         #   - Liquidity: cash_and_equivalents
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "earnings_per_share",
                 "net_income",
@@ -68,8 +67,7 @@ def stanley_druckenmiller_agent(state: AgentState, agent_id: str = "stanley_druc
                 "outstanding_shares",
                 "ebit",
                 "ebitda",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=5,
             api_key=api_key,

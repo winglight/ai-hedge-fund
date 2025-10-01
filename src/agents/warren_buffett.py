@@ -33,8 +33,7 @@ def warren_buffett_agent(state: AgentState, agent_id: str = "warren_buffett_agen
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "capital_expenditure",
                 "depreciation_and_amortization",
                 "net_income",
@@ -47,8 +46,7 @@ def warren_buffett_agent(state: AgentState, agent_id: str = "warren_buffett_agen
                 "gross_profit",
                 "revenue",
                 "free_cash_flow",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="ttm",
             limit=10,
             api_key=api_key,

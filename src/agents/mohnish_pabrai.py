@@ -34,8 +34,7 @@ def mohnish_pabrai_agent(state: AgentState, agent_id: str = "mohnish_pabrai_agen
 
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 # Profitability and cash generation
                 "revenue",
                 "gross_profit",
@@ -55,8 +54,7 @@ def mohnish_pabrai_agent(state: AgentState, agent_id: str = "mohnish_pabrai_agen
                 "depreciation_and_amortization",
                 # Shares outstanding for per-share context
                 "outstanding_shares",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=8,
             api_key=api_key,

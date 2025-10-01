@@ -48,8 +48,7 @@ def aswath_damodaran_agent(state: AgentState, agent_id: str = "aswath_damodaran_
 
         progress.update_status(agent_id, ticker, "Fetching financial line items")
         line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "free_cash_flow",
                 "ebit",
                 "interest_expense",
@@ -58,8 +57,7 @@ def aswath_damodaran_agent(state: AgentState, agent_id: str = "aswath_damodaran_
                 "outstanding_shares",
                 "net_income",
                 "total_debt",
-            ],
-            end_date,
+            ], end_date=end_date,
             api_key=api_key,
         )
 

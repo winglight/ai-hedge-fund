@@ -32,8 +32,7 @@ def rakesh_jhunjhunwala_agent(state: AgentState, agent_id: str = "rakesh_jhunjhu
 
         progress.update_status(agent_id, ticker, "Fetching financial line items")
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "net_income",
                 "earnings_per_share",
                 "ebit",
@@ -47,8 +46,7 @@ def rakesh_jhunjhunwala_agent(state: AgentState, agent_id: str = "rakesh_jhunjhu
                 "free_cash_flow",
                 "dividends_and_other_cash_distributions",
                 "issuance_or_purchase_of_equity_shares"
-            ],
-            end_date,
+            ], end_date=end_date,
             api_key=api_key,
         )
 

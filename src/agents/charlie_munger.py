@@ -33,8 +33,7 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
         
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "net_income",
                 "operating_income",
@@ -49,8 +48,7 @@ def charlie_munger_agent(state: AgentState, agent_id: str = "charlie_munger_agen
                 "outstanding_shares",
                 "research_and_development",
                 "goodwill_and_intangible_assets",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=10,  # Munger examines long-term trends
             api_key=api_key,

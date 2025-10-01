@@ -10,6 +10,9 @@ from src.agents.risk_manager import risk_management_agent
 from src.main import start
 from src.utils.analysts import ANALYST_CONFIG
 from src.graph.state import AgentState
+from src.data.providers import DEFAULT_PROVIDER_NAME, provider_context
+
+DATA_PROVIDER_SETTING = "DATA_PROVIDER"
 
 
 def extract_base_agent_key(unique_id: str) -> str:
@@ -153,28 +156,31 @@ def run_graph(
     start date, end date, show reasoning, model name,
     and model provider.
     """
-    return graph.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content="Make trading decisions based on the provided data.",
-                )
-            ],
-            "data": {
-                "tickers": tickers,
-                "portfolio": portfolio,
-                "start_date": start_date,
-                "end_date": end_date,
-                "analyst_signals": {},
+    provider_name, credentials = build_provider_credentials(request)
+    with provider_context(provider_name, credentials):
+        return graph.invoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content="Make trading decisions based on the provided data.",
+                    )
+                ],
+                "data": {
+                    "tickers": tickers,
+                    "portfolio": portfolio,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "analyst_signals": {},
+                },
+                "metadata": {
+                    "show_reasoning": False,
+                    "model_name": model_name,
+                    "model_provider": model_provider,
+                    "request": request,  # Pass the request for agent-specific model access
+                    "data_provider": provider_name,
+                },
             },
-            "metadata": {
-                "show_reasoning": False,
-                "model_name": model_name,
-                "model_provider": model_provider,
-                "request": request,  # Pass the request for agent-specific model access
-            },
-        },
-    )
+        )
 
 
 def parse_hedge_fund_response(response):
@@ -190,3 +196,34 @@ def parse_hedge_fund_response(response):
     except Exception as e:
         print(f"Unexpected error while parsing response: {e}\nResponse: {repr(response)}")
         return None
+# Provider utilities -------------------------------------------------------
+
+
+def build_provider_credentials(request) -> tuple[str, dict]:
+    if request is None:
+        return DEFAULT_PROVIDER_NAME, {}
+
+    api_keys = getattr(request, "api_keys", {}) or {}
+    provider_name = getattr(request, "data_provider", None) or api_keys.get(DATA_PROVIDER_SETTING) or DEFAULT_PROVIDER_NAME
+    provider_options = dict(getattr(request, "data_provider_options", {}) or {})
+
+    credentials = dict(provider_options)
+
+    if provider_name == "financial_datasets":
+        api_key = api_keys.get("FINANCIAL_DATASETS_API_KEY")
+        if api_key:
+            credentials.setdefault("api_key", api_key)
+    elif provider_name == "ibbot":
+        mapping = {
+            "host": "IBBOT_HOST",
+            "account": "IBBOT_ACCOUNT",
+            "access_token": "IBBOT_ACCESS_TOKEN",
+            "refresh_token": "IBBOT_REFRESH_TOKEN",
+        }
+        for field, key_name in mapping.items():
+            value = api_keys.get(key_name)
+            if value:
+                credentials.setdefault(field, value)
+
+    return provider_name, credentials
+

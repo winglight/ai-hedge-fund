@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { apiKeysService } from '@/services/api-keys-api';
 import { Eye, EyeOff, Key, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface ApiKey {
   key: string;
@@ -13,6 +13,9 @@ interface ApiKey {
   placeholder: string;
 }
 
+const DEFAULT_PROVIDER = 'financial_datasets';
+const DATA_PROVIDER_KEY = 'DATA_PROVIDER';
+
 const FINANCIAL_API_KEYS: ApiKey[] = [
   {
     key: 'FINANCIAL_DATASETS_API_KEY',
@@ -20,6 +23,37 @@ const FINANCIAL_API_KEYS: ApiKey[] = [
     description: 'For getting financial data to power the hedge fund',
     url: 'https://financialdatasets.ai/',
     placeholder: 'your-financial-datasets-api-key'
+  }
+];
+
+const IBBOT_API_KEYS: ApiKey[] = [
+  {
+    key: 'IBBOT_HOST',
+    label: 'Ibbot Host',
+    description: 'Base URL of your Ibbot deployment',
+    url: 'https://ibbot.io/',
+    placeholder: 'https://your-ibbot-host'
+  },
+  {
+    key: 'IBBOT_ACCOUNT',
+    label: 'Ibbot Account',
+    description: 'Account identifier used for authenticating API calls',
+    url: 'https://ibbot.io/',
+    placeholder: 'your-ibbot-account'
+  },
+  {
+    key: 'IBBOT_ACCESS_TOKEN',
+    label: 'Ibbot Access Token',
+    description: 'Short-lived access token for market data requests',
+    url: 'https://ibbot.io/',
+    placeholder: 'your-ibbot-access-token'
+  },
+  {
+    key: 'IBBOT_REFRESH_TOKEN',
+    label: 'Ibbot Refresh Token',
+    description: 'Refresh token used to obtain new access tokens',
+    url: 'https://ibbot.io/',
+    placeholder: 'your-ibbot-refresh-token'
   }
 ];
 
@@ -80,6 +114,7 @@ export function ApiKeysSettings() {
   const [visibleKeys, setVisibleKeys] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activeProvider = useMemo(() => apiKeys[DATA_PROVIDER_KEY] || DEFAULT_PROVIDER, [apiKeys]);
 
   // Load API keys from backend on component mount
   useEffect(() => {
@@ -163,6 +198,36 @@ export function ApiKeysSettings() {
     }
   };
 
+  const renderDataProviderSelector = () => (
+    <Card className="bg-panel border-gray-700 dark:border-gray-700">
+      <CardHeader>
+        <CardTitle className="text-lg font-medium text-primary flex items-center gap-2">
+          <Key className="h-4 w-4" />
+          Data Provider
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Select the default market data provider and configure its credentials.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-primary">Active Provider</label>
+          <select
+            value={activeProvider}
+            onChange={(e) => handleKeyChange(DATA_PROVIDER_KEY, e.target.value)}
+            className="w-full bg-background border border-gray-700 rounded-md px-3 py-2 text-sm text-foreground"
+          >
+            <option value="financial_datasets">Financial Datasets</option>
+            <option value="ibbot">Ibbot</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            This provider will be used for new workflows unless overridden per request.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   const renderApiKeySection = (title: string, description: string, keys: ApiKey[], icon: React.ReactNode) => (
     <Card className="bg-panel border-gray-700 dark:border-gray-700">
       <CardHeader>
@@ -175,12 +240,12 @@ export function ApiKeysSettings() {
       <CardContent className="space-y-4">
         {keys.map((apiKey) => (
           <div key={apiKey.key} className="space-y-2">
-                         <button
-               className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
-               onClick={() => window.open(apiKey.url, '_blank')}
-             >
-               {apiKey.label}
-             </button>
+            <button
+              className="text-sm font-medium text-primary hover:text-blue-500 cursor-pointer transition-colors text-left"
+              onClick={() => window.open(apiKey.url, '_blank')}
+            >
+              {apiKey.label}
+            </button>
             <div className="relative">
               <Input
                 type={visibleKeys[apiKey.key] ? 'text' : 'password'}
@@ -276,11 +341,21 @@ export function ApiKeysSettings() {
         </Card>
       )}
 
+      {renderDataProviderSelector()}
+
       {/* Financial Data API Keys */}
       {renderApiKeySection(
         'Financial Data',
         'API keys for accessing financial market data and datasets.',
         FINANCIAL_API_KEYS,
+        <Key className="h-4 w-4" />
+      )}
+
+      {/* Ibbot API Keys */}
+      {renderApiKeySection(
+        'Ibbot Credentials',
+        'Host and token credentials required for the Ibbot data provider.',
+        IBBOT_API_KEYS,
         <Key className="h-4 w-4" />
       )}
 

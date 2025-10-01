@@ -38,8 +38,7 @@ def cathie_wood_agent(state: AgentState, agent_id: str = "cathie_wood_agent"):
         progress.update_status(agent_id, ticker, "Gathering financial line items")
         # Request multiple periods of data (annual or TTM) for a more robust view.
         financial_line_items = search_line_items(
-            ticker,
-            [
+            ticker, [
                 "revenue",
                 "gross_margin",
                 "operating_margin",
@@ -52,8 +51,7 @@ def cathie_wood_agent(state: AgentState, agent_id: str = "cathie_wood_agent"):
                 "research_and_development",
                 "capital_expenditure",
                 "operating_expense",
-            ],
-            end_date,
+            ], end_date=end_date,
             period="annual",
             limit=5,
             api_key=api_key,

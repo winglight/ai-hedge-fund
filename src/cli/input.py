@@ -16,8 +16,9 @@ from src.llm.models import (
 )
 from src.utils.analysts import ANALYST_ORDER
 from src.utils.ollama import ensure_ollama_and_model
+from src.data.providers import DEFAULT_PROVIDER_NAME, has_provider
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -310,6 +311,8 @@ class CLIInputs:
     show_reasoning: bool = False
     show_agent_graph: bool = False
     raw_args: Optional[argparse.Namespace] = None
+    data_provider: str = DEFAULT_PROVIDER_NAME
+    provider_options: dict[str, str] = field(default_factory=dict)
 
 
 def parse_cli_inputs(
@@ -348,6 +351,18 @@ def parse_cli_inputs(
     if include_graph_flag:
         parser.add_argument("--show-agent-graph", action="store_true", help="Show the agent graph")
 
+    parser.add_argument(
+        "--data-provider",
+        type=str,
+        help="Market data provider to use (default: financial_datasets)",
+    )
+    parser.add_argument(
+        "--provider-option",
+        action="append",
+        dest="provider_options",
+        help="Provider-specific option in key=value format. Can be provided multiple times.",
+    )
+
     args = parser.parse_args()
 
     # Normalize parsed values
@@ -358,6 +373,21 @@ def parse_cli_inputs(
     })
     model_name, model_provider = select_model(getattr(args, "ollama", False))
     start_date, end_date = resolve_dates(getattr(args, "start_date", None), getattr(args, "end_date", None), default_months_back=default_months_back)
+
+    raw_provider = getattr(args, "data_provider", None) or os.getenv("AI_HEDGE_FUND_DATA_PROVIDER")
+    if raw_provider:
+        provider_value = raw_provider.lower()
+        if not has_provider(provider_value):
+            raise ValueError(f"Unknown data provider '{raw_provider}'")
+    else:
+        provider_value = DEFAULT_PROVIDER_NAME
+
+    provider_options: dict[str, str] = {}
+    for item in getattr(args, "provider_options", []) or []:
+        if "=" not in item:
+            raise ValueError(f"Provider option '{item}' must be in key=value format")
+        key, value = item.split("=", 1)
+        provider_options[key.strip()] = value.strip()
 
     return CLIInputs(
         tickers=tickers,
@@ -371,6 +401,8 @@ def parse_cli_inputs(
         show_reasoning=getattr(args, "show_reasoning", False),
         show_agent_graph=getattr(args, "show_agent_graph", False),
         raw_args=args,
+        data_provider=provider_value,
+        provider_options=provider_options,
     )
 
 

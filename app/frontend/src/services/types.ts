@@ -60,6 +60,9 @@ export interface BaseHedgeFundRequest {
   model_provider?: ModelProvider;
   margin_requirement?: number;
   portfolio_positions?: PortfolioPosition[];
+  api_keys?: Record<string, string>;
+  data_provider?: string;
+  data_provider_options?: Record<string, string>;
 }
 
 export interface HedgeFundRequest extends BaseHedgeFundRequest {
