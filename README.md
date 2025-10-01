@@ -43,6 +43,7 @@ By using this software, you agree to use it solely for learning purposes.
 
 ## Table of Contents
 - [How to Install](#how-to-install)
+- [Integrating with ibbot](#integrating-with-ibbot)
 - [How to Run](#how-to-run)
   - [⌨️ Command Line Interface](#️-command-line-interface)
   - [🖥️ Web Application](#️-web-application)
@@ -82,6 +83,24 @@ FINANCIAL_DATASETS_API_KEY=your-financial-datasets-api-key
 
 **Financial Data**: Data for AAPL, GOOGL, MSFT, NVDA, and TSLA is free and does not require an API key. For any other ticker, you will need to set the `FINANCIAL_DATASETS_API_KEY` in the .env file.
 
+## Integrating with ibbot
+
+Interactive Brokers Bot (ibbot) packaging adds an execution-ready hand-off to every run. Before enabling it, populate the required credentials in your `.env` file (or the environment in which you launch the app):
+
+- `IBBOT_HOST`
+- `IBBOT_ACCOUNT`
+- `IBBOT_ACCESS_TOKEN`
+- `IBBOT_REFRESH_TOKEN`
+
+These values allow the platform to authenticate with ibbot and upload the packaged strategy bundle. If you're running inside Docker, follow the [container-specific setup instructions](docker/README.md#ibbot-in-docker) first so the compose services receive the credentials.
+
+To direct the system to use ibbot pricing and generate an intraday package:
+
+- **CLI:** pass both `--data-provider ibbot` and `--strategy-mode intra_day` along with your normal arguments. The data provider flag tells the loader to fetch prices from ibbot, while the strategy mode ensures the risk and portfolio agents produce a bundle that matches ibbot's intraday constraints.
+- **Web UI:** choose **ibbot** from the *Data Provider* menu on the workflow start node, then pick **Intra-day** from the *Strategy* dropdown. The live run drawer shows an "ibbot packaging" progress step and updates to "Ready to export" once the bundle is uploaded. If packaging fails, the error message surfaces next to the provider badge.
+
+When both flags are enabled the results panel displays the decision JSON and a downloadable `ibbot_bundle.zip` (or similar archive) so you can immediately import the strategy inside Interactive Brokers.
+
 ## How to Run
 
 ### ⌨️ Command Line Interface
@@ -119,6 +138,20 @@ You can optionally specify the start and end dates to make decisions over a spec
 poetry run python src/main.py --ticker AAPL,MSFT,NVDA --start-date 2024-01-01 --end-date 2024-03-01
 ```
 
+#### Worked example: Streaming an ibbot-enabled session
+
+Once your `.env` includes the ibbot credentials, you can stream an intraday run end-to-end. The example below requests SSE updates so you can watch analysts and packaging progress in real time:
+
+```bash
+poetry run python src/main.py \
+  --ticker AAPL \
+  --data-provider ibbot \
+  --strategy-mode intra_day \
+  --stream
+```
+
+During execution the terminal prints server-sent events such as `event: analyst_update`, `event: risk_update`, and `event: ibbot_packaging_progress` so you can track each phase. When the session completes the CLI reports the location of the packaged archive inside `results/<timestamp>/ibbot/`. The folder contains the serialized bundle (`ibbot_bundle.zip`) alongside the traditional decision log so you can reference both artifacts later.
+
 #### Enable IBBOT strategy mode
 
 Packaging the run output for Interactive Brokers Bots (IBBOT) requires enabling strategy mode so the risk and portfolio agents
@@ -150,6 +183,8 @@ Note: The `--ollama`, `--start-date`, and `--end-date` flags work for the backte
 The new way to run the AI Hedge Fund is through our web application that provides a user-friendly interface. This is recommended for users who prefer visual interfaces over command line tools.
 
 Please see detailed instructions on how to install and run the web application [here](https://github.com/virattt/ai-hedge-fund/tree/main/app).
+
+To mirror the CLI flow above, start a new workflow, select **ibbot** as the data provider, and choose **Intra-day** strategy mode. Hit *Run* to watch the right-hand activity stream surface the same SSE events (analyst updates, packaging status) that the CLI prints. When packaging finishes a new *ibbot Bundle* tile appears in the run results drawer; click it to download the archive. If you're deploying via containers, remember to review the [Docker instructions](docker/README.md#ibbot-in-docker) for mounting credentials before launching the web stack.
 
 <img width="1721" alt="Screenshot 2025-06-28 at 6 41 03 PM" src="https://github.com/user-attachments/assets/b95ab696-c9f4-416c-9ad1-51feb1f5374b" />
 

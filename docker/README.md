@@ -43,6 +43,7 @@ By using this software, you agree to use it solely for learning purposes.
 
 ## Table of Contents
 - [How to Install](#how-to-install)
+- [ibbot in Docker](#ibbot-in-docker)
 - [How to Run](#how-to-run)
   - [⌨️ Command Line Interface](#️-command-line-interface)
   - [🖥️ Web Application (NEW!)](#️-web-application)
@@ -78,9 +79,52 @@ OPENAI_API_KEY=your-openai-api-key
 FINANCIAL_DATASETS_API_KEY=your-financial-datasets-api-key
 ```
 
+If you plan to stream strategies into Interactive Brokers, continue with the [ibbot integration guide in the root README](../README.md#integrating-with-ibbot) before launching any containers.
+
 **Important**: You must set at least one LLM API key (e.g. `OPENAI_API_KEY`, `GROQ_API_KEY`, `ANTHROPIC_API_KEY`, or `DEEPSEEK_API_KEY`) for the hedge fund to work. 
 
 **Financial Data**: Data for AAPL, GOOGL, MSFT, NVDA, and TSLA is free and does not require an API key. For any other ticker, you will need to set the `FINANCIAL_DATASETS_API_KEY` in the .env file.
+
+## ibbot in Docker
+
+Docker runs inherit credentials from the same root-level `.env` file the local workflow uses. To enable ibbot packaging inside containers:
+
+1. Add the required variables described in the [Integrating with ibbot](../README.md#integrating-with-ibbot) section to your repository root `.env` file. The helper scripts automatically mount that file into `/app/.env` for every container.
+2. If you keep credentials outside the repo, update the `volumes` entry in `docker-compose.yml` (and the helper scripts if needed) to mount your preferred secrets file into `/app/.env` before bringing the stack up.
+3. For one-off overrides, export `IBBOT_HOST`, `IBBOT_ACCOUNT`, `IBBOT_ACCESS_TOKEN`, or `IBBOT_REFRESH_TOKEN` in your shell before launching the containers—Compose merges shell environment variables with values pulled from `.env`.
+
+With credentials in place you can start an ibbot-enabled run directly from the Docker helper scripts:
+
+```bash
+cd docker
+./run.sh --ticker AAPL \
+         --data-provider ibbot \
+         --strategy-mode intra_day \
+         main
+```
+
+To stream the same session through Docker Compose (with Ollama) and observe server-sent events in the console, invoke Compose directly so you can pass the full argument list to Python:
+
+```bash
+docker compose run --rm hedge-fund-ollama \
+  python src/main.py \
+  --ticker AAPL \
+  --data-provider ibbot \
+  --strategy-mode intra_day \
+  --stream
+```
+
+Run the command from the `docker/` directory so Compose picks up the bundled configuration files.
+
+During execution you can monitor packaging progress with:
+
+```bash
+docker compose logs -f hedge-fund
+# or, for Ollama-enabled runs
+docker compose logs -f hedge-fund-ollama
+```
+
+Look for `ibbot_packaging_progress` lines to confirm the archive upload succeeded. When the job finishes the bundled artifact is written to `/app/results/<timestamp>/ibbot/` inside the running container. Use `docker cp <container>:/app/results/... .` or attach a volume that binds `/app/results` if you need the package on the host automatically.
 
 ## How to Run
 
