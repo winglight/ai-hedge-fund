@@ -1,18 +1,18 @@
-import os
 import json
+import os
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
 from langchain_anthropic import ChatAnthropic
 from langchain_deepseek import ChatDeepSeek
+from langchain_gigachat import GigaChat
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
-from langchain_xai import ChatXAI
-from langchain_openai import ChatOpenAI, AzureChatOpenAI
-from langchain_openai import ChatOpenAI
-from langchain_gigachat import GigaChat
 from langchain_ollama import ChatOllama
-from enum import Enum
+from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_xai import ChatXAI
 from pydantic import BaseModel
-from typing import Tuple, List
-from pathlib import Path
 
 
 class ModelProvider(str, Enum):
@@ -21,6 +21,7 @@ class ModelProvider(str, Enum):
     ALIBABA = "Alibaba"
     ANTHROPIC = "Anthropic"
     DEEPSEEK = "DeepSeek"
+    GEMINI = "Gemini"
     GOOGLE = "Google"
     GROQ = "Groq"
     META = "Meta"
@@ -31,6 +32,33 @@ class ModelProvider(str, Enum):
     GIGACHAT = "GigaChat"
     AZURE_OPENAI = "Azure OpenAI"
     XAI = "xAI"
+
+
+ProviderMetadata = Dict[str, Any]
+
+
+PROVIDER_METADATA: Dict[ModelProvider, ProviderMetadata] = {
+    ModelProvider.GEMINI: {
+        "api_key_env": ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "capabilities": {
+            "supports_json_mode": False,
+            "supports_reasoning": True,
+            "notes": [
+                "Optimized for multi-step reasoning tasks.",
+                "Structured JSON mode is not currently available.",
+            ],
+        },
+    },
+    ModelProvider.DEEPSEEK: {
+        "capabilities": {
+            "supports_json_mode": False,
+            "supports_reasoning": True,
+            "notes": [
+                "Use for reasoning workflows; JSON mode not supported natively.",
+            ],
+        },
+    },
+}
 
 
 class LLMModel(BaseModel):
@@ -45,11 +73,15 @@ class LLMModel(BaseModel):
         return (self.display_name, self.model_name, self.provider.value)
 
     def is_custom(self) -> bool:
-        """Check if the model is a Gemini model"""
+        """Check if the model requires a custom name entry"""
         return self.model_name == "-"
 
     def has_json_mode(self) -> bool:
         """Check if the model supports JSON mode"""
+        provider_metadata = PROVIDER_METADATA.get(self.provider, {})
+        capabilities = provider_metadata.get("capabilities", {})
+        if capabilities.get("supports_json_mode") is False:
+            return False
         if self.is_deepseek() or self.is_gemini():
             return False
         # Only certain Ollama models support JSON mode
@@ -66,11 +98,16 @@ class LLMModel(BaseModel):
 
     def is_gemini(self) -> bool:
         """Check if the model is a Gemini model"""
-        return self.model_name.startswith("gemini")
+        return self.provider == ModelProvider.GEMINI or self.model_name.startswith("gemini")
 
     def is_ollama(self) -> bool:
         """Check if the model is an Ollama model"""
         return self.provider == ModelProvider.OLLAMA
+
+    def get_capabilities(self) -> Dict[str, Any]:
+        """Return capability metadata for the provider"""
+        provider_metadata = PROVIDER_METADATA.get(self.provider, {})
+        return provider_metadata.get("capabilities", {})
 
 
 # Load models from JSON file
@@ -111,10 +148,22 @@ LLM_ORDER = [model.to_choice_tuple() for model in AVAILABLE_MODELS]
 OLLAMA_LLM_ORDER = [model.to_choice_tuple() for model in OLLAMA_MODELS]
 
 
-def get_model_info(model_name: str, model_provider: str) -> LLMModel | None:
+def get_model_info(model_name: str, model_provider: str | ModelProvider) -> LLMModel | None:
     """Get model information by model_name"""
     all_models = AVAILABLE_MODELS + OLLAMA_MODELS
-    return next((model for model in all_models if model.model_name == model_name and model.provider == model_provider), None)
+    if not isinstance(model_provider, ModelProvider):
+        try:
+            model_provider = ModelProvider(model_provider)
+        except ValueError:
+            return None
+    return next(
+        (
+            model
+            for model in all_models
+            if model.model_name == model_name and model.provider == model_provider
+        ),
+        None,
+    )
 
 
 def get_models_list():
@@ -123,10 +172,16 @@ def get_models_list():
         {
             "display_name": model.display_name,
             "model_name": model.model_name,
-            "provider": model.provider.value
+            "provider": model.provider.value,
+            "capabilities": model.get_capabilities(),
         }
         for model in AVAILABLE_MODELS
     ]
+
+
+def get_provider_metadata() -> Dict[str, ProviderMetadata]:
+    """Return provider metadata keyed by provider name."""
+    return {provider.value: metadata for provider, metadata in PROVIDER_METADATA.items()}
 
 
 def get_model(model_name: str, model_provider: ModelProvider, api_keys: dict = None) -> ChatOpenAI | ChatGroq | ChatOllama | GigaChat | None:
@@ -158,6 +213,23 @@ def get_model(model_name: str, model_provider: ModelProvider, api_keys: dict = N
             print(f"API Key Error: Please make sure DEEPSEEK_API_KEY is set in your .env file or provided via API keys.")
             raise ValueError("DeepSeek API key not found.  Please make sure DEEPSEEK_API_KEY is set in your .env file or provided via API keys.")
         return ChatDeepSeek(model=model_name, api_key=api_key)
+    elif model_provider == ModelProvider.GEMINI:
+        metadata = PROVIDER_METADATA.get(ModelProvider.GEMINI, {})
+        env_keys: List[str] = metadata.get("api_key_env", []) or ["GEMINI_API_KEY"]
+        api_key = None
+        for env_key in env_keys:
+            api_key = (api_keys or {}).get(env_key) or os.getenv(env_key)
+            if api_key:
+                break
+        if not api_key:
+            joined_keys = " or ".join(env_keys)
+            print(
+                f"API Key Error: Please make sure {joined_keys} is set in your .env file or provided via API keys."
+            )
+            raise ValueError(
+                "Gemini API key not found. Please make sure the appropriate Gemini API key environment variable is set or provided via API keys."
+            )
+        return ChatGoogleGenerativeAI(model=model_name, api_key=api_key)
     elif model_provider == ModelProvider.GOOGLE:
         api_key = (api_keys or {}).get("GOOGLE_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not api_key:

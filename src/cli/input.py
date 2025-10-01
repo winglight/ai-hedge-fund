@@ -1,12 +1,20 @@
+import os
 import sys
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
 import argparse
+from datetime import datetime
+
+from dateutil.relativedelta import relativedelta
 import questionary
 from colorama import Fore, Style
 
+from src.llm.models import (
+    LLM_ORDER,
+    OLLAMA_LLM_ORDER,
+    ModelProvider,
+    get_model_info,
+    get_provider_metadata,
+)
 from src.utils.analysts import ANALYST_ORDER
-from src.llm.models import LLM_ORDER, OLLAMA_LLM_ORDER, get_model_info, ModelProvider
 from src.utils.ollama import ensure_ollama_and_model
 
 from dataclasses import dataclass
@@ -69,6 +77,97 @@ def parse_tickers(tickers_arg: str | None) -> list[str]:
     return [ticker.strip() for ticker in tickers_arg.split(",") if ticker.strip()]
 
 
+def _get_first_env_value(*names: str) -> str | None:
+    """Return the first non-empty environment variable from the provided names."""
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return None
+
+
+def _parse_provider_from_env(raw_provider: str | None) -> ModelProvider | None:
+    """Parse a provider string or enum name into a ModelProvider."""
+    if not raw_provider:
+        return None
+    normalized = raw_provider.strip().lower()
+    for provider in ModelProvider:
+        if provider.value.lower() == normalized or provider.name.lower() == normalized:
+            return provider
+    return None
+
+
+def resolve_model_from_env(use_ollama: bool) -> tuple[str | None, str | None]:
+    """Resolve model selection from environment variables if provided."""
+    provider_value = _get_first_env_value(
+        "LLM_PROVIDER",
+        "MODEL_PROVIDER",
+        "AI_HEDGE_FUND_MODEL_PROVIDER",
+    )
+    model_value = _get_first_env_value(
+        "LLM_MODEL",
+        "MODEL_NAME",
+        "AI_HEDGE_FUND_MODEL_NAME",
+    )
+
+    if use_ollama:
+        ollama_model_value = _get_first_env_value("OLLAMA_MODEL") or model_value
+        if ollama_model_value:
+            return ollama_model_value, ModelProvider.OLLAMA.value
+
+        provider_enum = _parse_provider_from_env(provider_value)
+        if provider_enum == ModelProvider.OLLAMA and model_value:
+            return model_value, provider_enum.value
+        return None, None
+
+    provider_enum = _parse_provider_from_env(provider_value)
+    if provider_enum:
+        if model_value:
+            return model_value, provider_enum.value
+
+        for _, name, provider in LLM_ORDER:
+            if provider == provider_enum.value:
+                return name, provider
+
+    return None, None
+
+
+def _announce_model_selection(model_name: str, model_provider: str) -> None:
+    """Print a formatted summary of the chosen model and any capability hints."""
+    model_info = get_model_info(model_name, model_provider)
+    provider_metadata = get_provider_metadata()
+
+    if model_info:
+        provider_label = model_info.provider.value
+        print(
+            f"\nSelected {Fore.CYAN}{provider_label}{Style.RESET_ALL} model: "
+            f"{Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}"
+        )
+    else:
+        provider_label = model_provider
+        print(
+            f"\nSelected model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}"
+        )
+
+    capabilities = model_info.get_capabilities() if model_info else provider_metadata.get(provider_label, {}).get("capabilities", {})
+
+    capability_hints: list[str] = []
+    if capabilities.get("supports_json_mode") is False:
+        capability_hints.append(
+            "JSON mode is not supported; outputs will be parsed heuristically."
+        )
+    capability_hints.extend(capabilities.get("notes", []))
+
+    if capability_hints:
+        print(f"{Fore.YELLOW}Capability hints:{Style.RESET_ALL}")
+        for hint in capability_hints:
+            print(f"  - {hint}")
+
+    print()
+
+
 def select_analysts(flags: dict | None = None) -> list[str]:
     if flags and flags.get("analysts_all"):
         return [a[1] for a in ANALYST_ORDER]
@@ -105,6 +204,11 @@ def select_model(use_ollama: bool) -> tuple[str, str]:
     model_name: str = ""
     model_provider: str | None = None
 
+    env_model, env_provider = resolve_model_from_env(use_ollama)
+    if env_model and env_provider:
+        _announce_model_selection(env_model, env_provider)
+        return env_model, env_provider
+
     if use_ollama:
         print(f"{Fore.CYAN}Using Ollama for local LLM inference.{Style.RESET_ALL}")
         model_name = questionary.select(
@@ -135,9 +239,7 @@ def select_model(use_ollama: bool) -> tuple[str, str]:
             sys.exit(1)
 
         model_provider = ModelProvider.OLLAMA.value
-        print(
-            f"\nSelected {Fore.CYAN}Ollama{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
-        )
+        _announce_model_selection(model_name, model_provider)
     else:
         model_choice = questionary.select(
             "Select your LLM model:",
@@ -165,13 +267,10 @@ def select_model(use_ollama: bool) -> tuple[str, str]:
                 print("\n\nInterrupt received. Exiting...")
                 sys.exit(0)
 
-        if model_info:
-            print(
-                f"\nSelected {Fore.CYAN}{model_provider}{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
-            )
-        else:
-            model_provider = "Unknown"
-            print(f"\nSelected model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n")
+        if not model_info:
+            model_provider = model_provider or "Unknown"
+
+        _announce_model_selection(model_name, model_provider)
 
     return model_name, model_provider or ""
 

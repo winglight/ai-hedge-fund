@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 
 from app.backend.models.schemas import ErrorResponse
 from app.backend.services.ollama_service import OllamaService
-from src.llm.models import get_models_list
+from src.llm.models import get_models_list, get_provider_metadata
 
 router = APIRouter(prefix="/language-models")
 
@@ -42,15 +42,19 @@ async def get_language_model_providers():
     """Get the list of available model providers with their models grouped."""
     try:
         models = get_models_list()
-        
+
         # Group models by provider
         providers = {}
+        provider_metadata = get_provider_metadata()
         for model in models:
             provider_name = model["provider"]
+            metadata = provider_metadata.get(provider_name, {})
             if provider_name not in providers:
                 providers[provider_name] = {
                     "name": provider_name,
-                    "models": []
+                    "models": [],
+                    "capabilities": metadata.get("capabilities", {}),
+                    "api_key_env": metadata.get("api_key_env", []),
                 }
             providers[provider_name]["models"].append({
                 "display_name": model["display_name"],
