@@ -162,15 +162,56 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
         
         # Combine volatility and correlation adjustments
         combined_limit_pct = vol_adjusted_limit_pct * corr_multiplier
+
+        # Incorporate analyst risk parameters (e.g., from technical analyst)
+        analyst_signals = data.get("analyst_signals", {})
+        analyst_risk_details: list[dict] = []
+        ttl_hints: list[dict] = []
+        execution_hints: list[dict] = []
+        max_position_pct_hint: float | None = None
+
+        for agent_name, payload in analyst_signals.items():
+            if agent_name == agent_id:
+                continue
+            agent_payload = payload.get(ticker)
+            if not isinstance(agent_payload, dict):
+                continue
+
+            risk_params = agent_payload.get("risk_parameters") or {}
+            if risk_params:
+                analyst_risk_details.append({
+                    "agent": agent_name,
+                    "parameters": risk_params,
+                })
+                if "max_position_pct" in risk_params:
+                    try:
+                        pct_value = float(risk_params["max_position_pct"])
+                        if max_position_pct_hint is None:
+                            max_position_pct_hint = pct_value
+                        else:
+                            max_position_pct_hint = min(max_position_pct_hint, pct_value)
+                    except (TypeError, ValueError):
+                        pass
+
+            ttl_value = agent_payload.get("signal_ttl")
+            if ttl_value:
+                ttl_hints.append({"agent": agent_name, "ttl": ttl_value})
+
+            exec_window = agent_payload.get("execution_window")
+            if exec_window:
+                execution_hints.append({"agent": agent_name, "window": exec_window})
+
         # Convert to dollar position limit
         position_limit = total_portfolio_value * combined_limit_pct
-        
+        if max_position_pct_hint is not None:
+            position_limit = min(position_limit, total_portfolio_value * max_position_pct_hint)
+
         # Calculate remaining limit for this position
         remaining_position_limit = position_limit - current_position_value
-        
+
         # Ensure we don't exceed available cash
         max_position_size = min(remaining_position_limit, portfolio.get("cash", 0))
-        
+
         risk_analysis[ticker] = {
             "remaining_position_limit": float(max_position_size),
             "current_price": float(current_price),
@@ -191,6 +232,12 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
                 "remaining_limit": float(remaining_position_limit),
                 "available_cash": float(portfolio.get("cash", 0)),
                 "risk_adjustment": f"Volatility x Correlation adjusted: {combined_limit_pct:.1%} (base {vol_adjusted_limit_pct:.1%})"
+            },
+            "signal_metadata": {
+                "analyst_risk_parameters": analyst_risk_details,
+                "ttl_hints": ttl_hints,
+                "execution_windows": execution_hints,
+                "applied_max_position_pct": max_position_pct_hint,
             },
         }
         

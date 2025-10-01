@@ -313,6 +313,8 @@ class CLIInputs:
     raw_args: Optional[argparse.Namespace] = None
     data_provider: str = DEFAULT_PROVIDER_NAME
     provider_options: dict[str, str] = field(default_factory=dict)
+    strategy_mode: Optional[str] = None
+    data_timeframe: Optional[str] = None
 
 
 def parse_cli_inputs(
@@ -403,6 +405,8 @@ def parse_cli_inputs(
         raw_args=args,
         data_provider=provider_value,
         provider_options=provider_options,
+        strategy_mode=getattr(args, "strategy_mode", None),
+        data_timeframe=getattr(args, "data_timeframe", None),
     )
 
 

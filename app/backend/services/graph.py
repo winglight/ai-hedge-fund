@@ -157,6 +157,14 @@ def run_graph(
     and model provider.
     """
     provider_name, credentials = build_provider_credentials(request)
+    strategy_mode = getattr(request, "strategy_mode", None) if request else None
+    data_timeframe = getattr(request, "data_timeframe", None) if request else None
+    data_granularity = (
+        "intraday"
+        if (strategy_mode and "intra" in strategy_mode.lower())
+        or (data_timeframe and any(ch in str(data_timeframe).lower() for ch in ["m", "min", "hour", "hr", "h"]))
+        else "end_of_day"
+    )
     with provider_context(provider_name, credentials):
         return graph.invoke(
             {
@@ -171,6 +179,12 @@ def run_graph(
                     "start_date": start_date,
                     "end_date": end_date,
                     "analyst_signals": {},
+                    "workflow_metadata": {
+                        "strategy_mode": strategy_mode,
+                        "data_timeframe": data_timeframe,
+                        "data_provider": provider_name,
+                        "data_granularity": data_granularity,
+                    },
                 },
                 "metadata": {
                     "show_reasoning": False,
@@ -178,6 +192,9 @@ def run_graph(
                     "model_provider": model_provider,
                     "request": request,  # Pass the request for agent-specific model access
                     "data_provider": provider_name,
+                    "strategy_mode": strategy_mode,
+                    "data_timeframe": data_timeframe,
+                    "data_granularity": data_granularity,
                 },
             },
         )

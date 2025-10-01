@@ -71,6 +71,8 @@ class BaseHedgeFundRequest(BaseModel):
     api_keys: Optional[Dict[str, str]] = None
     data_provider: Optional[str] = Field(default=DEFAULT_PROVIDER_NAME)
     data_provider_options: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    strategy_mode: Optional[str] = Field(default=None, description="Trading strategy mode (e.g., swing, intraday)")
+    data_timeframe: Optional[str] = Field(default=None, description="Requested market data timeframe (e.g., 1d, 5m)")
 
     def get_agent_ids(self) -> List[str]:
         """Extract agent IDs from graph structure"""

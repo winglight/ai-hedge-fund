@@ -32,6 +32,21 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
             request_data.api_keys = api_key_service.get_api_keys_dict()
 
         data_provider = request_data.data_provider or DEFAULT_PROVIDER_NAME
+        strategy_mode = getattr(request_data, "strategy_mode", None)
+        data_timeframe = getattr(request_data, "data_timeframe", None)
+        data_granularity = (
+            "intraday"
+            if (strategy_mode and "intra" in strategy_mode.lower())
+            or (data_timeframe and any(ch in data_timeframe.lower() for ch in ["m", "min", "hour", "hr", "h"]))
+            else "end_of_day"
+        )
+        strategy_mode = getattr(request_data, "strategy_mode", None)
+        data_timeframe = getattr(request_data, "data_timeframe", None)
+        data_granularity = (
+            "intraday"
+            if (strategy_mode and "intra" in strategy_mode.lower()) or (data_timeframe and any(ch in data_timeframe.lower() for ch in ["m", "min", "hour", "hr", "h"]))
+            else "end_of_day"
+        )
 
         # Create the portfolio
         portfolio = create_portfolio(request_data.initial_cash, request_data.margin_requirement, request_data.tickers, request_data.portfolio_positions)
@@ -44,7 +59,17 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
         graph = graph.compile()
 
         # Log a test progress update for debugging
-        progress.update_status("system", None, "Preparing hedge fund run")
+        progress.update_status(
+            "system",
+            None,
+            "Preparing hedge fund run",
+            context={
+                "data_provider": data_provider,
+                "strategy_mode": strategy_mode,
+                "data_timeframe": data_timeframe,
+                "data_granularity": data_granularity,
+            },
+        )
 
         # Convert model_provider to string if it's an enum
         model_provider = request_data.model_provider
@@ -70,14 +95,27 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
             disconnect_task = None
 
             # Simple handler to add updates to the queue
-            def progress_handler(agent_name, ticker, status, analysis, timestamp):
+            default_context = {
+                "data_provider": data_provider,
+                "strategy_mode": strategy_mode,
+                "data_timeframe": data_timeframe,
+                "data_granularity": data_granularity,
+            }
+
+            def progress_handler(agent_name, ticker, status, analysis, timestamp, context):
+                merged_context = dict(default_context)
+                if context:
+                    merged_context.update({k: v for k, v in context.items() if v is not None})
                 event = ProgressUpdateEvent(
                     agent=agent_name,
                     ticker=ticker,
                     status=status,
                     timestamp=timestamp,
                     analysis=analysis,
-                    data_provider=data_provider,
+                    data_provider=merged_context.get("data_provider"),
+                    data_granularity=merged_context.get("data_granularity"),
+                    strategy_mode=merged_context.get("strategy_mode"),
+                    data_timeframe=merged_context.get("data_timeframe"),
                 )
                 progress_queue.put_nowait(event)
 
@@ -103,7 +141,12 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                 disconnect_task = asyncio.create_task(wait_for_disconnect())
                 
                 # Send initial message
-                yield StartEvent(data_provider=data_provider).to_sse()
+                yield StartEvent(
+                    data_provider=data_provider,
+                    strategy_mode=strategy_mode,
+                    data_timeframe=data_timeframe,
+                    data_granularity=data_granularity,
+                ).to_sse()
 
                 # Stream progress updates until run_task completes or client disconnects
                 while not run_task.done():
@@ -144,6 +187,9 @@ async def run(request_data: HedgeFundRequest, request: Request, db: Session = De
                         "current_prices": result.get("data", {}).get("current_prices", {}),
                     },
                     data_provider=data_provider,
+                    data_granularity=data_granularity,
+                    strategy_mode=strategy_mode,
+                    data_timeframe=data_timeframe,
                 )
                 yield final_data.to_sse()
 
@@ -218,6 +264,18 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
             request=request_data,  # Pass the full request for agent-specific model access
         )
 
+        progress.update_status(
+            "backtest",
+            None,
+            "Preparing backtest run",
+            context={
+                "data_provider": data_provider,
+                "strategy_mode": strategy_mode,
+                "data_timeframe": data_timeframe,
+                "data_granularity": data_granularity,
+            },
+        )
+
         # Function to detect client disconnection
         async def wait_for_disconnect():
             """Wait for client disconnect and return True when it happens"""
@@ -236,14 +294,27 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
             disconnect_task = None
 
             # Global progress handler to capture individual agent updates during backtest
-            def progress_handler(agent_name, ticker, status, analysis, timestamp):
+            default_context = {
+                "data_provider": data_provider,
+                "strategy_mode": strategy_mode,
+                "data_timeframe": data_timeframe,
+                "data_granularity": data_granularity,
+            }
+
+            def progress_handler(agent_name, ticker, status, analysis, timestamp, context):
+                merged_context = dict(default_context)
+                if context:
+                    merged_context.update({k: v for k, v in context.items() if v is not None})
                 event = ProgressUpdateEvent(
                     agent=agent_name,
                     ticker=ticker,
                     status=status,
                     timestamp=timestamp,
                     analysis=analysis,
-                    data_provider=data_provider,
+                    data_provider=merged_context.get("data_provider"),
+                    data_granularity=merged_context.get("data_granularity"),
+                    strategy_mode=merged_context.get("strategy_mode"),
+                    data_timeframe=merged_context.get("data_timeframe"),
                 )
                 progress_queue.put_nowait(event)
 
@@ -257,16 +328,19 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         timestamp=None,
                         analysis=None,
                         data_provider=data_provider,
+                        data_granularity=data_granularity,
+                        strategy_mode=strategy_mode,
+                        data_timeframe=data_timeframe,
                     )
                     progress_queue.put_nowait(event)
                 elif update["type"] == "backtest_result":
                     # Convert day result to a streaming event
                     backtest_result = BacktestDayResult(**update["data"])
-                    
+
                     # Send the full day result data as JSON in the analysis field
                     import json
                     analysis_data = json.dumps(update["data"])
-                    
+
                     event = ProgressUpdateEvent(
                         agent="backtest",
                         ticker=None,
@@ -274,6 +348,9 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         timestamp=None,
                         analysis=analysis_data,
                         data_provider=data_provider,
+                        data_granularity=data_granularity,
+                        strategy_mode=strategy_mode,
+                        data_timeframe=data_timeframe,
                     )
                     progress_queue.put_nowait(event)
 
@@ -290,7 +367,12 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                 disconnect_task = asyncio.create_task(wait_for_disconnect())
                 
                 # Send initial message
-                yield StartEvent(data_provider=data_provider).to_sse()
+                yield StartEvent(
+                    data_provider=data_provider,
+                    strategy_mode=strategy_mode,
+                    data_timeframe=data_timeframe,
+                    data_granularity=data_granularity,
+                ).to_sse()
 
                 # Stream progress updates until backtest_task completes or client disconnects
                 while not backtest_task.done():
@@ -332,6 +414,9 @@ async def backtest(request_data: BacktestRequest, request: Request, db: Session 
                         "total_days": len(result["results"]),
                     },
                     data_provider=data_provider,
+                    data_granularity=data_granularity,
+                    strategy_mode=strategy_mode,
+                    data_timeframe=data_timeframe,
                 )
                 yield final_data.to_sse()
 

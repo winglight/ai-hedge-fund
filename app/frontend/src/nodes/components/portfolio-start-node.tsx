@@ -39,6 +39,12 @@ const runModes = [
   { value: 'backtest', label: 'Backtest' },
 ];
 
+const strategyModes = [
+  { value: 'swing', label: 'Swing / Multi-day' },
+  { value: 'intra_day', label: 'Intraday' },
+  { value: 'position', label: 'Position / Long Horizon' },
+];
+
 export function PortfolioStartNode({
   data,
   selected,
@@ -58,7 +64,10 @@ export function PortfolioStartNode({
   const [runMode, setRunMode] = useNodeState(id, 'runMode', 'single');
   const [startDate, setStartDate] = useNodeState(id, 'startDate', threeMonthsAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useNodeState(id, 'endDate', today.toISOString().split('T')[0]);
+  const [strategyMode, setStrategyMode] = useNodeState(id, 'strategyMode', 'swing');
+  const [dataTimeframe, setDataTimeframe] = useNodeState(id, 'dataTimeframe', '1d');
   const [open, setOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
   
   const { currentFlowId } = useFlowContext();
   const nodeContext = useNodeContext();
@@ -229,6 +238,8 @@ export function PortfolioStartNode({
         model_provider: undefined,
         // Pass portfolio positions to backend
         portfolio_positions: portfolioPositions,
+        strategy_mode: strategyMode,
+        data_timeframe: dataTimeframe,
       });
     } else {
       // Use the regular hedge fund API for single run
@@ -251,6 +262,8 @@ export function PortfolioStartNode({
         initial_cash: parseFloat(initialCash) || 100000,
         // Pass portfolio positions to backend
         portfolio_positions: portfolioPositions,
+        strategy_mode: strategyMode,
+        data_timeframe: dataTimeframe,
       });
     }
   };
@@ -419,6 +432,63 @@ export function PortfolioStartNode({
                     )}
                   </Button>
                 </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="text-subtitle text-primary flex items-center gap-1">
+                  Strategy Mode
+                </div>
+                <div className="flex gap-2">
+                  <Popover open={strategyOpen} onOpenChange={setStrategyOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={strategyOpen}
+                        className="flex-1 justify-between h-10 px-3 py-2 bg-node border border-border hover:bg-accent"
+                      >
+                        <span className="text-subtitle">
+                          {strategyModes.find((mode) => mode.value === strategyMode)?.label || 'Swing / Multi-day'}
+                        </span>
+                        <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-node border border-border shadow-lg">
+                      <Command className="bg-node">
+                        <CommandList className="bg-node">
+                          <CommandEmpty>No strategy found.</CommandEmpty>
+                          <CommandGroup>
+                            {strategyModes.map((mode) => (
+                              <CommandItem
+                                key={mode.value}
+                                value={mode.value}
+                                className={cn(
+                                  "cursor-pointer bg-node hover:bg-accent",
+                                  strategyMode === mode.value
+                                )}
+                                onSelect={(currentValue) => {
+                                  setStrategyMode(currentValue);
+                                  setStrategyOpen(false);
+                                }}
+                              >
+                                {mode.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="text-subtitle text-primary flex items-center gap-1">
+                  Data Timeframe
+                </div>
+                <Input
+                  value={dataTimeframe}
+                  onChange={(e) => setDataTimeframe(e.target.value)}
+                  placeholder="1d or 5m"
+                />
               </div>
               {runMode === 'backtest' && (
                 <div className="flex flex-col gap-4">

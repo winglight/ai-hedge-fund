@@ -57,10 +57,18 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
         ticker_signals = {}
         for agent, signals in analyst_signals.items():
             if not agent.startswith("risk_management_agent") and ticker in signals:
-                sig = signals[ticker].get("signal")
-                conf = signals[ticker].get("confidence")
+                payload = signals[ticker]
+                sig = payload.get("signal")
+                conf = payload.get("confidence")
                 if sig is not None and conf is not None:
-                    ticker_signals[agent] = {"sig": sig, "conf": conf}
+                    enriched = {"sig": sig, "conf": conf}
+                    if payload.get("signal_ttl"):
+                        enriched["ttl"] = payload["signal_ttl"]
+                    if payload.get("execution_window"):
+                        enriched["execution_window"] = payload["execution_window"]
+                    if payload.get("risk_parameters"):
+                        enriched["risk"] = payload["risk_parameters"]
+                    ticker_signals[agent] = enriched
         signals_by_ticker[ticker] = ticker_signals
 
     state["data"]["current_prices"] = current_prices
@@ -169,7 +177,17 @@ def _compact_signals(signals_by_ticker: dict[str, dict]) -> dict[str, dict]:
             sig = payload.get("sig") or payload.get("signal")
             conf = payload.get("conf") if "conf" in payload else payload.get("confidence")
             if sig is not None and conf is not None:
-                compact[agent] = {"sig": sig, "conf": conf}
+                entry = {"sig": sig, "conf": conf}
+                ttl = payload.get("ttl") or payload.get("signal_ttl")
+                if ttl:
+                    entry["ttl"] = ttl
+                execution_window = payload.get("execution_window")
+                if execution_window:
+                    entry["execution_window"] = execution_window
+                risk_payload = payload.get("risk") or payload.get("risk_parameters")
+                if risk_payload:
+                    entry["risk"] = risk_payload
+                compact[agent] = entry
         out[t] = compact
     return out
 

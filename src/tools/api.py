@@ -108,6 +108,42 @@ def get_prices(
     return prices
 
 
+def get_intraday_prices(
+    ticker: str,
+    start: str,
+    end: str,
+    *,
+    interval: str = "minute",
+    interval_multiplier: int = 5,
+    api_key: str | None = None,
+    provider: str | None = None,
+    credentials: Dict[str, Any] | None = None,
+) -> list[Price]:
+    provider_instance, provider_name = _get_provider(
+        provider=provider,
+        api_key=api_key,
+        credentials=credentials,
+    )
+    cache_key = f"intraday_{provider_name}_{ticker}_{interval}_{interval_multiplier}_{start}_{end}"
+    if cached := _cache.get_prices(cache_key, source=provider_name):
+        return [Price(**row) for row in cached]
+
+    try:
+        prices = provider_instance.get_intraday_prices(
+            ticker,
+            start,
+            end,
+            interval=interval,
+            interval_multiplier=interval_multiplier,
+        )
+    except (AttributeError, NotImplementedError):
+        prices = []
+
+    if prices:
+        _cache.set_prices(cache_key, [p.model_dump() for p in prices], source=provider_name)
+    return prices
+
+
 def get_financial_metrics(
     ticker: str,
     end_date: str,
