@@ -51,7 +51,18 @@ class IbbotDataProvider(MarketDataProvider):
 
     @property
     def _base_url(self) -> str:
-        return self.host.rstrip("/")
+        host = str(self.host).strip().rstrip("/")
+        if not host:
+            raise ValueError("Ibbot host is empty")
+
+        if "://" not in host:
+            normalized_host = host.lstrip("/")
+            if normalized_host.startswith(("localhost", "127.0.0.1", "0.0.0.0")):
+                host = f"http://{normalized_host}"
+            else:
+                host = f"https://{normalized_host}"
+
+        return host
 
     def _auth_headers(self) -> dict[str, str]:
         return {
