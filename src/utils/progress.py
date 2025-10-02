@@ -17,9 +17,23 @@ class AgentProgress:
         self.table = Table(show_header=False, box=None, padding=(0, 1))
         self.live = Live(self.table, console=console, refresh_per_second=4)
         self.started = False
+        self.live_enabled = True
         self.update_handlers: List[
             Callable[[str, Optional[str], str, Optional[str], Optional[str], Optional[Dict[str, Any]]], None]
         ] = []
+
+    def set_live_enabled(self, enabled: bool):
+        """Enable or disable the rich Live table rendering."""
+        if self.live_enabled == enabled:
+            return
+
+        if not enabled and self.started and self.live_enabled:
+            self.live.stop()
+
+        self.live_enabled = enabled
+
+        if enabled and self.started:
+            self.live.start()
 
     def register_handler(
         self, handler: Callable[[str, Optional[str], str, Optional[str], Optional[str], Optional[Dict[str, Any]]], None]
@@ -38,13 +52,15 @@ class AgentProgress:
     def start(self):
         """Start the progress display."""
         if not self.started:
-            self.live.start()
+            if self.live_enabled:
+                self.live.start()
             self.started = True
 
     def stop(self):
         """Stop the progress display."""
         if self.started:
-            self.live.stop()
+            if self.live_enabled:
+                self.live.stop()
             self.started = False
 
     def update_status(
@@ -98,6 +114,9 @@ class AgentProgress:
 
     def _refresh_display(self):
         """Refresh the progress display."""
+        if not self.live_enabled:
+            return
+
         self.table.columns.clear()
         self.table.add_column(width=100)
 

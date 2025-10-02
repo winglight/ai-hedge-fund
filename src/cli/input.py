@@ -315,6 +315,7 @@ class CLIInputs:
     provider_options: dict[str, str] = field(default_factory=dict)
     strategy_mode: Optional[str] = None
     data_timeframe: Optional[str] = None
+    stream: bool = False
 
 
 def parse_cli_inputs(
@@ -374,6 +375,11 @@ def parse_cli_inputs(
         type=str,
         help="Market data timeframe hint (e.g., 1d, 5m).",
     )
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Emit structured Server-Sent Events to stdout for real-time monitoring.",
+    )
 
     args = parser.parse_args()
 
@@ -417,6 +423,7 @@ def parse_cli_inputs(
         provider_options=provider_options,
         strategy_mode=getattr(args, "strategy_mode", None),
         data_timeframe=getattr(args, "data_timeframe", None),
+        stream=getattr(args, "stream", False),
     )
 
 
