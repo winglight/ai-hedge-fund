@@ -92,7 +92,16 @@ Interactive Brokers Bot (ibbot) packaging adds an execution-ready hand-off to ev
 - `IBBOT_ACCESS_TOKEN`
 - `IBBOT_REFRESH_TOKEN`
 
-These values allow the platform to authenticate with ibbot and upload the packaged strategy bundle. If you're running inside Docker, follow the [container-specific setup instructions](docker/README.md#ibbot-in-docker) first so the compose services receive the credentials.
+These values allow the platform to authenticate with ibbot and upload the packaged strategy bundle. For local ibbot instances you can include the port in the host value, for example:
+
+```bash
+IBBOT_HOST=localhost:5000
+IBBOT_ACCOUNT=paper-trading
+IBBOT_ACCESS_TOKEN=your-access-token
+IBBOT_REFRESH_TOKEN=your-refresh-token
+```
+
+If you're running inside Docker, follow the [container-specific setup instructions](docker/README.md#ibbot-in-docker) first so the compose services receive the credentials.
 
 To direct the system to use ibbot pricing and generate an intraday package:
 
