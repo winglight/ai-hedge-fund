@@ -188,6 +188,35 @@ def create_workflow(selected_analysts=None):
     return workflow
 
 
+def _stream_handler_factory():
+    """Return a handler that prints progress updates as SSE events."""
+
+    def handler(agent_name, ticker, status, analysis, timestamp, context):
+        event = "analyst_update"
+        normalized = agent_name or ""
+        if normalized.startswith("risk_management"):
+            event = "risk_update"
+        elif normalized.startswith("portfolio_manager"):
+            event = "portfolio_update"
+
+        payload = {
+            "agent": normalized,
+            "ticker": ticker,
+            "status": status,
+            "analysis": analysis,
+            "timestamp": timestamp,
+            "context": context or {},
+        }
+
+        serialized = json.dumps({k: v for k, v in payload.items() if v is not None})
+        print(f"event: {event}")
+        print(f"data: {serialized}")
+        print()
+        sys.stdout.flush()
+
+    return handler
+
+
 if __name__ == "__main__":
     inputs = parse_cli_inputs(
         description="Run the hedge fund trading system",
@@ -199,6 +228,11 @@ if __name__ == "__main__":
 
     tickers = inputs.tickers
     selected_analysts = inputs.selected_analysts
+
+    stream_handler = None
+    if inputs.stream:
+        progress.set_live_enabled(False)
+        stream_handler = progress.register_handler(_stream_handler_factory())
 
     # Construct portfolio here
     portfolio = {
@@ -224,18 +258,24 @@ if __name__ == "__main__":
         },
     }
 
-    result = run_hedge_fund(
-        tickers=tickers,
-        start_date=inputs.start_date,
-        end_date=inputs.end_date,
-        portfolio=portfolio,
-        show_reasoning=inputs.show_reasoning,
-        selected_analysts=inputs.selected_analysts,
-        model_name=inputs.model_name,
-        model_provider=inputs.model_provider,
-        data_provider=inputs.data_provider,
-        provider_options=inputs.provider_options,
-        strategy_mode=inputs.strategy_mode,
-        data_timeframe=inputs.data_timeframe,
-    )
+    try:
+        result = run_hedge_fund(
+            tickers=tickers,
+            start_date=inputs.start_date,
+            end_date=inputs.end_date,
+            portfolio=portfolio,
+            show_reasoning=inputs.show_reasoning,
+            selected_analysts=inputs.selected_analysts,
+            model_name=inputs.model_name,
+            model_provider=inputs.model_provider,
+            data_provider=inputs.data_provider,
+            provider_options=inputs.provider_options,
+            strategy_mode=inputs.strategy_mode,
+            data_timeframe=inputs.data_timeframe,
+        )
+    finally:
+        if stream_handler:
+            progress.unregister_handler(stream_handler)
+            progress.set_live_enabled(True)
+
     print_trading_output(result)
